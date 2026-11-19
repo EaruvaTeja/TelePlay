@@ -71,6 +71,86 @@ class FakeClient:
         return None
 
 
+def test_build_client_does_not_pass_proxy_when_host_is_empty(monkeypatch):
+    captured = {}
+
+    def fake_client(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(telegram, "Client", fake_client)
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_host", "")
+
+    telegram._build_client("main_bot", "token")
+
+    assert "proxy" not in captured
+    assert captured["ipv6"] is True
+
+
+def test_build_client_passes_configured_proxy(monkeypatch):
+    captured = {}
+
+    def fake_client(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(telegram, "Client", fake_client)
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_scheme", "socks5")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_host", "127.0.0.1")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_port", "40000")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_username", "")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_password", "")
+
+    telegram._build_client("main_bot", "token")
+
+    assert captured["proxy"] == {
+        "scheme": "socks5",
+        "hostname": "127.0.0.1",
+        "port": 40000,
+    }
+    assert captured["ipv6"] is True
+
+
+def test_build_client_uses_default_proxy_port_and_requires_both_credentials(monkeypatch):
+    captured = {}
+
+    def fake_client(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(telegram, "Client", fake_client)
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_host", "proxy.example")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_port", "")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_username", "user")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_password", "")
+
+    telegram._build_client("main_bot", "token")
+
+    assert captured["proxy"] == {
+        "scheme": "socks5",
+        "hostname": "proxy.example",
+        "port": 40000,
+    }
+
+
+def test_build_client_includes_both_proxy_credentials(monkeypatch):
+    captured = {}
+
+    def fake_client(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(telegram, "Client", fake_client)
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_host", "proxy.example")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_username", "user")
+    monkeypatch.setattr(telegram.settings, "telegram_proxy_password", "password")
+
+    telegram._build_client("main_bot", "token")
+
+    assert captured["proxy"]["username"] == "user"
+    assert captured["proxy"]["password"] == "password"
+
+
 def _patch(monkeypatch, main, helpers, clients_list):
     monkeypatch.setattr(telegram, "tg_client", main)
     monkeypatch.setattr(telegram, "_helper_clients", helpers)

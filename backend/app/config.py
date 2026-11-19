@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     telegram_storage_channel_id: int = Field(
         description="Private storage channel ID, must look like -100xxxxxxxxxx"
     )
+    telegram_proxy_scheme: str = Field(default="socks5", alias="TELEGRAM_PROXY_SCHEME")
+    telegram_proxy_host: str = Field(default="", alias="TELEGRAM_PROXY_HOST")
+    telegram_proxy_port: str = Field(default="", alias="TELEGRAM_PROXY_PORT")
+    telegram_proxy_username: str = Field(default="", alias="TELEGRAM_PROXY_USERNAME")
+    telegram_proxy_password: str = Field(default="", alias="TELEGRAM_PROXY_PASSWORD")
 
     # Comma-separated strings (not lists) so pydantic-settings never tries to
     # JSON-decode a plain "a,b,c" environment variable.

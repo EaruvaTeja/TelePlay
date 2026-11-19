@@ -454,6 +454,7 @@ A monolith `Dockerfile` (root) bundles the backend and web app into a single con
 | `DATABASE_URL`                | ✅       | `postgresql://...` or `sqlite:///./data/teleplay.db` |
 | `WEB_BASE_URL`                | ❌       | Public URL of the web app.                           |
 | `TELEGRAM_HELPER_BOT_TOKENS`  | ❌       | Comma-separated tokens for parallel downloads.       |
+| `TELEGRAM_PROXY_*`            | ❌       | Optional SOCKS5 proxy for IPv6-only VPS Telegram traffic; see the [production runbook](../deploy/README.md). |
 | `AUTH_USERS`                  | ❌       | Comma-separated Telegram IDs for access control.     |
 
 ---

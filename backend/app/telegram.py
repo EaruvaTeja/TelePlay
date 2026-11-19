@@ -36,6 +36,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from pyrogram import Client
 from pyrogram.errors import (
@@ -85,16 +86,27 @@ def _build_client(
 
     no_updates=True for helpers: they don't need to receive messages, only stream.
     """
-    return Client(
-        name=str(SESSION_DIR / name),
-        api_id=settings.telegram_api_id,
-        api_hash=settings.telegram_api_hash,
-        bot_token=bot_token,
-        max_concurrent_transmissions=max_concurrent,
-        no_updates=no_updates,
-        sleep_threshold=30,  # auto-sleep on FloodWait < 30s
-        ipv6=True,  # Required for IPv6-only VPS environments
-    )
+    client_options: dict[str, Any] = {
+        "name": str(SESSION_DIR / name),
+        "api_id": settings.telegram_api_id,
+        "api_hash": settings.telegram_api_hash,
+        "bot_token": bot_token,
+        "max_concurrent_transmissions": max_concurrent,
+        "no_updates": no_updates,
+        "sleep_threshold": 30,  # auto-sleep on FloodWait < 30s
+        "ipv6": True,  # Required for IPv6-only VPS environments
+    }
+    if settings.telegram_proxy_host:
+        proxy: dict[str, str | int] = {
+            "scheme": settings.telegram_proxy_scheme,
+            "hostname": settings.telegram_proxy_host,
+            "port": int(settings.telegram_proxy_port or 40000),
+        }
+        if settings.telegram_proxy_username and settings.telegram_proxy_password:
+            proxy["username"] = settings.telegram_proxy_username
+            proxy["password"] = settings.telegram_proxy_password
+        client_options["proxy"] = proxy
+    return Client(**client_options)
 
 
 # ---------------------------------------------------------------------------
