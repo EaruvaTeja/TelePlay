@@ -62,6 +62,11 @@ async def _supervised_sync():
 async def lifespan(app: FastAPI):
     """Application lifespan - start/stop Telegram clients, init DB, supervise sync."""
     global _sync_task
+
+    # Register bot handlers (module-level decorators in bot.py).
+    # Must happen before start_all_clients() so Pyrogram has them on connect.
+    # Kept independent of SYNC_ON_STARTUP so handlers are always registered.
+    from . import bot  # noqa: F401
     
     logger.info("Starting Media Hub Backend...")
     
