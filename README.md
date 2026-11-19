@@ -29,6 +29,32 @@ Production deployment and maintenance use the canonical [T13 runbook](deploy/REA
 
 Do not use older Docker, Railway, Render, SQLite, Android, or folder-management instructions as deployment guidance.
 
+## Deployment on IPv6-only VPS
+
+For an IPv6-only VPS where direct Telegram connectivity does not work, install
+Cloudflare WARP in proxy mode:
+
+```bash
+bash <(curl -fsSL https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh)
+```
+
+Choose option 4, **"Install CloudFlare Client and set mode to Proxy"**, then
+press Enter to accept the default port `40000`. Set these variables in
+`/etc/hearth/hearth.env` on the VPS:
+
+```dotenv
+TELEGRAM_PROXY_SCHEME=socks5
+TELEGRAM_PROXY_HOST=127.0.0.1
+TELEGRAM_PROXY_PORT=40000
+TELEGRAM_PROXY_USERNAME=
+TELEGRAM_PROXY_PASSWORD=
+```
+
+Then restart the service with `sudo systemctl restart hearth.service`. The
+proxy is optional; leaving `TELEGRAM_PROXY_HOST` empty disables it, so local
+development needs no proxy configuration. Set both username and password only
+if the proxy requires authentication.
+
 ## Development
 
 Backend:

@@ -221,6 +221,20 @@ These are the "keys" that make the application work. You must add these regardle
 | `TELEGRAM_HELPER_BOT_TOKENS`  | (Optional) Comma-separated tokens for extra bots to speed up downloads.                                |
 | `AUTH_USERS`                  | (Optional) Comma-separated Telegram User IDs allowed to use the bot. Leave empty for everyone.         |
 
+### IPv6-only VPS proxy
+
+For a current IPv6-only VPS deployment, install Cloudflare WARP in proxy mode
+with `bash <(curl -fsSL https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh)`,
+choose option 4 ("Install CloudFlare Client and set mode to Proxy"), and press
+Enter for port `40000`. Set `TELEGRAM_PROXY_SCHEME=socks5`,
+`TELEGRAM_PROXY_HOST=127.0.0.1`, and `TELEGRAM_PROXY_PORT=40000` in
+`/etc/hearth/hearth.env`; set `TELEGRAM_PROXY_USERNAME=` and
+`TELEGRAM_PROXY_PASSWORD=` unless the proxy requires authentication (then set
+both). Run `sudo systemctl restart hearth.service`. Leaving
+`TELEGRAM_PROXY_HOST` empty disables the proxy for local development.
+See the canonical [production runbook](../deploy/README.md) for current
+deployment instructions.
+
 ---
 
 ## 🗄 Database Setup Guide

@@ -41,3 +41,40 @@ def test_valid_settings_ok(monkeypatch):
     _base(monkeypatch)
     s = Settings()
     assert s.auth_users == [123456789]
+
+
+def test_telegram_proxy_settings_default_to_disabled(monkeypatch):
+    _base(monkeypatch)
+    for name in (
+        "TELEGRAM_PROXY_SCHEME",
+        "TELEGRAM_PROXY_HOST",
+        "TELEGRAM_PROXY_PORT",
+        "TELEGRAM_PROXY_USERNAME",
+        "TELEGRAM_PROXY_PASSWORD",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    s = Settings()
+
+    assert s.telegram_proxy_scheme == "socks5"
+    assert s.telegram_proxy_host == ""
+    assert s.telegram_proxy_port == ""
+    assert s.telegram_proxy_username == ""
+    assert s.telegram_proxy_password == ""
+
+
+def test_telegram_proxy_settings_load_from_environment(monkeypatch):
+    _base(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_PROXY_SCHEME", "socks5")
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST", "127.0.0.1")
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT", "40000")
+    monkeypatch.setenv("TELEGRAM_PROXY_USERNAME", "user")
+    monkeypatch.setenv("TELEGRAM_PROXY_PASSWORD", "password")
+
+    s = Settings()
+
+    assert s.telegram_proxy_scheme == "socks5"
+    assert s.telegram_proxy_host == "127.0.0.1"
+    assert s.telegram_proxy_port == "40000"
+    assert s.telegram_proxy_username == "user"
+    assert s.telegram_proxy_password == "password"

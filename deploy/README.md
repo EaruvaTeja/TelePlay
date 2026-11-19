@@ -29,8 +29,8 @@ The placeholder `64:ff9b::` in `getent` output indicates NAT64. Native IPv4 URLs
 
 - If GitHub is unreachable and NAT64 is unavailable, download the release tarball or git bundle on a dual-stack PC and copy it to the VPS.
 - If DuckDNS is unreachable, set the AAAA record manually in the DuckDNS web UI.
-- If Neon or Telegram MTProto is unreachable over IPv6 and no NAT64 is available, STOP. Ask the owner to choose a paid IPv4 option, an IPv4-capable host, or provider NAT64. Do not silently switch architecture.
-- Telegram MTProto IPv6 support is proven at first boot: `/health/ready` must report Telegram connected. If it fails, treat it as a blocker rather than adding retries.
+- If Neon is unreachable over IPv6 and no NAT64 is available, STOP. Ask the owner to choose a paid IPv4 option, an IPv4-capable host, or provider NAT64. Do not silently switch architecture.
+- Telegram connectivity must be proven at first boot, directly over IPv6 or through the optional WARP proxy below: `/health/ready` must report Telegram connected. If it fails, treat it as a blocker rather than adding retries.
 
 Primary DNS path: DuckDNS AAAA record + Caddy over IPv6.
 
@@ -140,6 +140,32 @@ python3 -c "import secrets;print(secrets.token_hex(32))"
 ```
 
 Never commit or log real environment values.
+
+### Optional Telegram SOCKS5 proxy on IPv6-only VPS
+
+If direct Telegram connectivity does not deliver updates from the IPv6-only
+host, install Cloudflare WARP in proxy mode:
+
+```bash
+bash <(curl -fsSL https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh)
+```
+
+Choose option 4, **"Install CloudFlare Client and set mode to Proxy"**, then
+press Enter to accept the default port `40000`. Add these values to
+`/etc/hearth/hearth.env`:
+
+```dotenv
+TELEGRAM_PROXY_SCHEME=socks5
+TELEGRAM_PROXY_HOST=127.0.0.1
+TELEGRAM_PROXY_PORT=40000
+TELEGRAM_PROXY_USERNAME=
+TELEGRAM_PROXY_PASSWORD=
+```
+
+Restart Hearth with `sudo systemctl restart hearth.service`. These settings
+are optional; an empty `TELEGRAM_PROXY_HOST` disables the proxy, including for
+local development. Set both username and password only if the proxy requires
+authentication.
 
 ## 6. T0 Backups Before First Boot
 
