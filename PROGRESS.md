@@ -5,7 +5,7 @@
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
 * **Active Branch:** `main` (task work on `hearth/<task-id>` branches; owner creates + merges PRs)
-* **Current Task:** `T12.4.1` — frontend production dependency security patch (axios / follow-redirects / form-data)
+* **Current Task:** `T12.5` — IPv6-only VPS Telegram connectivity fix
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -31,7 +31,8 @@
 * [ ] **T12.3** — Login message polish, 10 playback speeds (owner-authorized MediaPlayer exception), DB-outage 503
 * [ ] **T12.4** — DB-wake upload UX + server status button + frontend 503 guidance + stream producer cleanup
 * [ ] **T12.4.1** — Frontend production dependency patch (axios / follow-redirects / form-data; production audit 3 → 0)
-* [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD; deployment paused pending T12.4.1 merge, owner smoke tests, and release re-freeze
+* [ ] **T12.5** — IPv6-only VPS Telegram connectivity (`ipv6=True` in Pyrogram `create_client`)
+* [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD; deployment paused pending T12.5 merge, owner smoke tests, and release re-freeze
 * [ ] **T15** — Real-World Hardware Acceptance (Phase R + runbook deploy + Samsung TV + 512MB VPS matrix; every P0 row PASS)
 * [ ] **T16** — Launch & 72-Hour Observation (GO/NO-GO, family invites, monitoring, Master Review MD → GO, tag `v1.0`) — NEW 2026-11-19
 
@@ -44,7 +45,8 @@
 * **T12.2 gates:** pytest 127 + npm lint/typecheck/test/build green on Python 3.13.0 / Node 20.19.5; production npm advisories recorded; RELEASE_SHA pending owner merge + tag.
 * **T12.4 gates:** pytest 143 + npm lint/typecheck/test/build green on Python 3.13.0 / Node 20.19.5; deployment paused.
 * **T12.4.1 gates:** production npm advisories 3 → 0; npm lint/typecheck/test/build and backend pytest/compileall/pip check green on Node 20.19.5 / Python 3.13.0.
-* **Release SHA:** deployment paused; re-freeze deferred until T12.4.1 merges and owner smoke-tests pass; owner then re-points tag `v1.0-rc`, and VPS must checkout the new SHA before deploy.
+* **T12.5 gates:** pytest 143 + compileall + pip check green on Python 3.13.0; Pyrogram client configured for IPv6.
+* **Release SHA:** deployment paused; re-freeze deferred until T12.5 merges and owner smoke-tests pass; owner then re-points tag `v1.0-rc`, and VPS must checkout the new SHA before deploy.
 * **VPS:** NeoHeberg LXC, Debian 13 trixie, 512MB RAM + 512MB swap, ~3.1GB free disk; Python 3.13 native (explicit decision 2026-11-19).
 * **Neon backup verified + off-host:** PENDING (T0)
 * **Session backup:** PENDING (T0; after first boot if fresh install)
@@ -93,7 +95,8 @@
 * `2026-11-19 | T12.3 | pytest 132 + compileall/pip check and npm lint/typecheck/test/build green; 10 playback speeds; DB connection failures return 503; owner local acceptance pending`
 * `2026-11-19 | T12.4 | DB-wake upload UX + server_status button + frontend 503 guidance + stream producer cleanup; gates green (143 pytest, 14 frontend)`
 * `2026-11-19 | T12.4.1 | patched axios/follow-redirects/form-data (prod advisories 3 → 0, no --force, majors unchanged); all gates green (frontend 14 tests; backend 143 tests)`
+* `2026-11-19 | T12.5 | added ipv6=True to Pyrogram Client for IPv6-only VPS compatibility`
 
-**T0 status:** ON HOLD pending T12.4.1 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
+**T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 
 **Note:** T0 is REQUIRED before the FIRST production boot (not before T2 — that dev work already shipped under its own gates). Agent never creates/merges PRs; owner merges after reading the agent report.
