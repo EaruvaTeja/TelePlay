@@ -93,6 +93,7 @@ def _build_client(
         max_concurrent_transmissions=max_concurrent,
         no_updates=no_updates,
         sleep_threshold=30,  # auto-sleep on FloodWait < 30s
+        ipv6=True,  # Required for IPv6-only VPS environments
     )
 
 

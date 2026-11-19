@@ -211,7 +211,7 @@ Playback compatibility investigation is documentation-only; do not change playba
 
 ## T12.4 — DB-wake upload UX, status button, 503 guidance, stream cleanup
 
-**Final version for 2026-11-19.** T12.5 is RESERVED for findings from the owner's external review arriving 2026-11-20; if none, T12.4 remains final.
+**Final version for 2026-11-19.** T12.5 was initially reserved for the owner's external review; the owner subsequently assigned it to the IPv6-only VPS connectivity fix below.
 
 **Branch:** `hearth/t12.4` from merged T12.3. **Files (exact):**
 * `backend/app/bot.py` — initialize upload `forwarded`, catch DB-connectivity failures from upload and `/start`, preserve Telegram compensation, and add an AUTH_USERS-authorized DB status callback before the existing DB-backed callback gate.
@@ -233,10 +233,21 @@ Playback compatibility investigation is documentation-only; do not change playba
 * `web/package.json` — only if the npm audit fix modifies it; review any diff and preserve major ranges.
 * `PLAN.md`, `PROGRESS.md`, `AUDIT_REPORT.md` — task, status, dependency delta, reachability analysis, and gate evidence.
 
-Do not change application code, backend requirements, deploy files, or frozen `MediaPlayer.tsx`. Keep axios on major 1 and verify it is above 1.19.0 and neither 1.14.1 nor 0.30.4; require follow-redirects above 1.15.11, form-data outside 4.0.0–4.0.5, and zero production advisories. T12.5 remains reserved for the owner's external review arriving 2026-11-20. Deployment/T0 remain ON HOLD pending merge, owner smoke tests, and release re-freeze.
+Do not change application code, backend requirements, deploy files, or frozen `MediaPlayer.tsx`. Keep axios on major 1 and verify it is above 1.19.0 and neither 1.14.1 nor 0.30.4; require follow-redirects above 1.15.11, form-data outside 4.0.0–4.0.5, and zero production advisories. The original T12.5 external-review reservation was superseded by the owner-directed IPv6 connectivity task below. Deployment/T0 remain ON HOLD pending merge, owner smoke tests, and release re-freeze.
 
 **Gate:** baseline `npm ci`, package versions, and `npm audit --omit=dev`; `npm audit fix --omit=dev` without `--force`; verify versions and zero production audit findings; then fresh `npm ci`, lint, typecheck, test, build, `_redirects`, full backend pytest, `compileall -q app`, `pip check`, and empty MediaPlayer diff.
 **Commit:** `T12.4.1: Patch axios/follow-redirects/form-data advisories — gate passed`
+
+## T12.5 — IPv6-only VPS Telegram connectivity fix
+
+**Branch:** `hearth/t12.5` from merged T12.4.1. **Files (exact):**
+* `backend/app/telegram.py` — pass `ipv6=True` to Pyrogram `Client` in `create_client`, with a brief IPv6-only VPS compatibility comment.
+* `PLAN.md`, `PROGRESS.md`, `AUDIT_REPORT.md` — record the task, status, root cause, and fresh gate evidence.
+
+Do not change other application code, dependencies, deploy files, or secrets. T0/deployment remain ON HOLD until owner merge and release re-freeze.
+
+**Gate:** full backend pytest, `compileall -q app`, `pip check`; `git diff --stat` limited to the four authorized files. Actual Telegram connectivity on the target IPv6-only VPS remains a post-merge owner verification.
+**Commit:** `T12.5: Force IPv6 for Pyrogram Client on IPv6-only VPS — gate passed`
 
 ## T0 — Verified Backups (OWNER, BEFORE first production boot; agent may assist)
 

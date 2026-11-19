@@ -232,3 +232,11 @@ Owner reports that some videos do not play even though backend logs show HTTP 20
 - **Backend — CONFIRMED:** Python **3.13.0**; `.venv\Scripts\python -m pytest -q` — **143 passed, 18 warnings**; `.venv\Scripts\python -m compileall -q app` — **PASS**; `.venv\Scripts\pip check` — **PASS, no broken requirements**.
 - **Scope — CONFIRMED:** `git diff -- web/package.json` empty; `git diff -- web/src/components/MediaPlayer.tsx` empty; no application, backend, or deployment files changed. No package major versions changed.
 - **NOT VERIFIED:** owner smoke tests on the deployed/merged release, owner re-freeze of `v1.0-rc`, and VPS deployment. Deployment and T0 remain ON HOLD.
+
+## T12.5 — IPv6 connectivity fix
+
+- **Root cause — CONFIRMED from the owner-reported VPS error and Pyrogram signature:** the target NeoHeberg server is IPv6-only; Pyrogram `Client` defaults to `ipv6=False`, so its initial IPv4 connection can fail with `[Errno 101] Network is unreachable`.
+- **Fix — CONFIRMED by source diff:** `create_client()` now passes `ipv6=True` to each Pyrogram `Client`, with a concise comment noting IPv6-only VPS compatibility. The installed Pyrogram `Client` signature supports this argument. No other application behavior or dependency changed.
+- **Gates — CONFIRMED:** Python 3.13.0; `.venv\Scripts\python -m pytest -q` — **143 passed, 18 warnings**; `.venv\Scripts\python -m compileall -q app` — **PASS**; `.venv\Scripts\pip check` — **PASS, no broken requirements**. The warning set is the same existing deprecations/runtime warning recorded for T12.4.1.
+- **Scope — CONFIRMED:** changes limited to `backend/app/telegram.py`, `PLAN.md`, `PROGRESS.md`, and this report. No dependencies or deploy files changed.
+- **VERIFY ON VPS:** confirm the deployed Pyrogram client establishes Telegram MTProto over IPv6 and `/health/ready` reports Telegram connected. No live VPS connection test was performed.
