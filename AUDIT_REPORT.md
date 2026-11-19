@@ -211,3 +211,24 @@ Owner reports that some videos do not play even though backend logs show HTTP 20
 - **Frontend:** Node 20.19.5 / npm 10.8.2; Vite/Vitest/esbuild process check — **none running**; `npm ci` — **PASS** (npm reported 27 dependency-tree advisories: 1 low, 7 moderate, 17 high, 2 critical; no audit fix or dependency edits); `npm run lint` — **PASS**; `npm run typecheck` — **PASS**; `npm test` — **2 files, 14 tests passed**; `npm run build` — **PASS**; `dist/_redirects` — **present**.
 - **Protected scope — CONFIRMED:** `git diff -- web/src/components/MediaPlayer.tsx` is empty; package manifests, `main.py`, `App.tsx`, `FileBrowser.tsx`, deployment files, and protected backend modules were not changed.
 - **VERIFY ON VPS / NOT VERIFIED:** actual Neon sleep/recovery and status-button behavior, Telegram live upload/compensation, repeated play/seek/disconnect behavior in live journals, owner local acceptance, merge/re-point of `v1.0-rc`, and deployment. T0 remains on hold.
+
+## T12.4.1 — frontend production dependency patch
+
+### Dependency delta and findings — CONFIRMED
+
+- **Before:** `axios@1.13.5`, `follow-redirects@1.15.11`, `form-data@4.0.5` (`npm ls axios follow-redirects form-data`).
+- **After:** `axios@1.21.1`, `follow-redirects@1.16.3`, `form-data@4.0.6`. Axios remains major 1 and is above 1.19.0; it is neither compromised version 1.14.1 nor 0.30.4. The other two packages are above/outside their vulnerable ranges.
+- `npm audit --omit=dev` **before** the fix: **3 production vulnerabilities (1 moderate, 2 high, 0 critical)**, affecting axios, follow-redirects, and form-data. `npm audit fix --omit=dev` completed without `--force`; `npm audit --omit=dev` **after** the fix: **found 0 vulnerabilities**.
+- Advisory classes addressed include Axios prototype-pollution gadgets (including request/header manipulation), header injection, `NO_PROXY` SSRF/proxy-control bypasses, streamed adapter `maxBodyLength` bypasses, and multipart CRLF injection; follow-redirects cross-domain authentication-header leakage; and form-data multipart CRLF injection.
+- **Reachability analysis — CONFIRMED by source inspection:** Hearth uses Axios from the browser bundle with no custom adapter override, so browser requests use the XHR adapter, not the Node `http`, `http2`, or `fetch` adapters. The API request interceptor uses Bearer authorization headers; no cookie-based XSRF configuration or `withCredentials` use was found. No direct `__proto__`/`Object.prototype` writes or custom deep-merge path was found in `web/src`. No Axios `FormData`/multipart upload path was found; media uploads go through the Telegram bot, and frontend API requests use small JSON payloads to the configured Hearth API. These factors reduce exposure to several Node-adapter and prototype-gadget advisories, but do not replace the dependency patch.
+- `web/package.json` diff: **empty**; only `web/package-lock.json` changed among dependency files.
+- **Remaining development-tree audit — CONFIRMED:** full `npm audit` after the production-only fix reports **24 vulnerabilities (1 low, 6 moderate, 15 high, 2 critical)** among development dependencies. The post-fix `npm audit --omit=dev` is clean; dev-only findings are accepted for this task and were not force-fixed or otherwise changed.
+
+### Fresh T12.4.1 gate evidence
+
+- **Date / branch:** 2026-11-19 / `hearth/t12.4.1`.
+- **Base commit:** `11bd4625936fc6fe81375285242f70d5b8ac660c` (base tree `b92d76dc18e9be7aa173030e3977dda39e6a3788`). Gates ran against the updated lockfile; its gate-tested content tree was `56e1368487695a55d95a97b438d0bc70d4b5dcb2`. The final commit SHA and committed tree are recorded in the task completion report; this report cannot embed the identifiers of the commit that contains it.
+- **Frontend — CONFIRMED:** Node **v20.19.5** / npm **10.8.2**; baseline `npm ci` — **PASS**; baseline `npm audit --omit=dev` — 3 production vulnerabilities as above; `npm audit fix --omit=dev` — **PASS, no `--force`**; fresh `npm ci` — **PASS**; `npm ls axios follow-redirects form-data` — after versions as above; `npm run lint` — **PASS**; `npm run typecheck` — **PASS**; `npm test` — **2 files, 14 passed**; `npm run build` — **PASS**; `dist/_redirects` — present; `npm audit --omit=dev` after — **0 vulnerabilities**.
+- **Backend — CONFIRMED:** Python **3.13.0**; `.venv\Scripts\python -m pytest -q` — **143 passed, 18 warnings**; `.venv\Scripts\python -m compileall -q app` — **PASS**; `.venv\Scripts\pip check` — **PASS, no broken requirements**.
+- **Scope — CONFIRMED:** `git diff -- web/package.json` empty; `git diff -- web/src/components/MediaPlayer.tsx` empty; no application, backend, or deployment files changed. No package major versions changed.
+- **NOT VERIFIED:** owner smoke tests on the deployed/merged release, owner re-freeze of `v1.0-rc`, and VPS deployment. Deployment and T0 remain ON HOLD.

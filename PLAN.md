@@ -226,6 +226,18 @@ Playback compatibility investigation is documentation-only; do not change playba
 **Gate:** full backend pytest, `compileall -q app`, `pip check`; frontend `npm ci`, lint, typecheck, test, build; verify `_redirects`; MediaPlayer diff empty; `git diff --stat` limited to authorized files.
 **Commit:** `T12.4: DB-wake upload UX + server status button + stream cleanup — gate passed`
 
+## T12.4.1 — Frontend production dependency security patch
+
+**Branch:** `hearth/t12.4.1` from merged T12.4 (`11bd4625936fc6fe81375285242f70d5b8ac660c`). **Files (exact):**
+* `web/package-lock.json` — apply `npm audit fix --omit=dev` only; no force or major upgrades.
+* `web/package.json` — only if the npm audit fix modifies it; review any diff and preserve major ranges.
+* `PLAN.md`, `PROGRESS.md`, `AUDIT_REPORT.md` — task, status, dependency delta, reachability analysis, and gate evidence.
+
+Do not change application code, backend requirements, deploy files, or frozen `MediaPlayer.tsx`. Keep axios on major 1 and verify it is above 1.19.0 and neither 1.14.1 nor 0.30.4; require follow-redirects above 1.15.11, form-data outside 4.0.0–4.0.5, and zero production advisories. T12.5 remains reserved for the owner's external review arriving 2026-11-20. Deployment/T0 remain ON HOLD pending merge, owner smoke tests, and release re-freeze.
+
+**Gate:** baseline `npm ci`, package versions, and `npm audit --omit=dev`; `npm audit fix --omit=dev` without `--force`; verify versions and zero production audit findings; then fresh `npm ci`, lint, typecheck, test, build, `_redirects`, full backend pytest, `compileall -q app`, `pip check`, and empty MediaPlayer diff.
+**Commit:** `T12.4.1: Patch axios/follow-redirects/form-data advisories — gate passed`
+
 ## T0 — Verified Backups (OWNER, BEFORE first production boot; agent may assist)
 
 Re-scoped: the old "before T2" wording is historical (dev schema work already gated). The hard boundary now is the FIRST boot against production Neon.
