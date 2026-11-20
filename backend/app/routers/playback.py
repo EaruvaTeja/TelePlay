@@ -143,6 +143,7 @@ async def start_playback(
         hours=settings.stream_token_hours,
         gv=gv,
         uid=owner_id,
+        ver=int(current_user.auth_version or 0) if role == "admin" else None,
     )
 
     stream_url = f"/api/stream/{body.file_id}?t={token}"

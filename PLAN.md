@@ -29,7 +29,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 
 | Task | Scope |
 |---|---|
-| T12.81 | Incident provenance and post-incident baseline freeze. |
+| T12.81 | Enforce family stream-token revocation with version claims and User.id identity. |
 | T12.82 | Re-baseline, A-item ownership, and execution-state reconciliation. |
 | T12.83 | Re-opened F-01 stream identity: bind token file/device/owner consistently. |
 | T12.84 | Re-opened F-02 source of truth: enforce `family_members` for family membership. |
@@ -279,9 +279,16 @@ Record the T12.6/T12.7 incident outcome, re-open F-01/F-02 in the verified basel
 **Gate:** backend `.venv\Scripts\python -m pytest -q` · `.venv\Scripts\python -m compileall -q app` · `.venv\Scripts\pip check`; frontend `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `dist/_redirects`; `git diff --stat -- web/src/components/MediaPlayer.tsx` empty; exactly the four authorized documentation files changed.
 **Commit:** `T12.80: Post-incident docs re-baseline, F-01/F-02 re-opened, mobile exceptions authorized — gate passed`
 
-## T12.81 — Incident provenance and post-incident baseline freeze
+## T12.81 — Enforce family stream-token revocation
 
-**Scope:** document the 2026-11-20 incident outcome, live SHA `c0aa30f28408add60574de9f9385912131b5524a` (`deploy-T12.7`), unconditional bot lifespan import, GitHub origin state, WARP SOCKS5 `127.0.0.1:40000`, stale `7629f0a` bundle, disk/RAM readings, and verification boundaries. This task creates no deployment or application change.
+**Branch:** `hearth/t12.81` from latest `main`. **Files:** `backend/app/auth.py`, `backend/app/routers/playback.py`, `backend/app/routers/streaming.py`, `backend/tests/test_streaming_security.py`, `backend/tests/test_playback.py`, `backend/tests/test_stream_cache_auth.py` (owner-approved minimal dependent fixture update), `PLAN.md`, `PROGRESS.md`, `AUDIT_REPORT.md`.
+
+Add keyword-only optional `ver` to stream tokens and include it when provided. Family playback passes `User.auth_version` while retaining `uid=User.id`; guest `gv` issuance stays unchanged. Before any cache or byte access, family streams require both claims, query User by primary key `id`, reject stale versions, and require an active `FamilyMember` for the user's Telegram ID. Keep the limiter owner ID as User.id. Replace mock-injected family claims with signed tokens and add TestClient regressions for family login/start/206, logout-all revocation including a warm cache, inactive-member revocation, and a signed admin token without `ver`. Preserve guest revocation and existing warm-cache 401 coverage.
+
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; no weakened/deleted security tests. **VERIFY ON VPS:** confirm live `/auth/logout-all` and `/user_remove` invalidate already-issued media URLs.
+**Commit:** `T12.81: Enforce family stream-token revocation (ver claim + uid identity, fail-closed) — gate passed`
+
+The existing cache-auth test file was initially excluded by its byte-identical note. The owner explicitly approved updating only its valid-family-token fixture because the old fixture minted an admin token without the now-required claims; its 206, cached body, and cache-header assertions remain intact.
 
 ## T12.82 — Re-baseline and A-item execution ownership
 
