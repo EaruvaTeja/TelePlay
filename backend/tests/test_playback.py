@@ -8,8 +8,10 @@ router tests monkeypatch app.routers.auth.limiter with a fresh instance.
 """
 import asyncio
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 
+from app.auth import verify_stream_token
 from app.playback import PlaybackLimiter
 
 
@@ -192,6 +194,62 @@ def test_stop_role_still_drops_guest_sessions():
     assert lim.is_active("A") is True
     assert lim.is_active("B") is False
     assert lim.is_active("C") is False
+
+
+def test_playback_start_mints_family_version_with_user_id(monkeypatch):
+    from app.routers import playback as playback_router
+    from app.schemas import PlaybackStartIn
+
+    async def fake_get_meta(file_id):
+        return object()
+
+    monkeypatch.setattr(playback_router, "get_meta", fake_get_meta)
+    lim, _ = make_limiter()
+    monkeypatch.setattr(playback_router, "limiter", lim)
+    user = SimpleNamespace(id=42, role="admin", auth_version=9)
+    body = PlaybackStartIn(
+        file_id=1,
+        device_id="family-device",
+        device_label="Family TV",
+    )
+
+    result = asyncio.run(playback_router.start_playback(body, current_user=user))
+    token = parse_qs(urlparse(result.stream_url).query)["t"][0]
+    claims = verify_stream_token(token, 1)
+
+    assert claims["uid"] == user.id
+    assert claims["ver"] == user.auth_version
+    assert lim.get("family-device").owner_id == user.id
+
+
+def test_playback_start_keeps_guest_version_claim_without_family_ver(monkeypatch):
+    from app.routers import playback as playback_router
+    from app.schemas import PlaybackStartIn
+
+    async def fake_get_meta(file_id):
+        return object()
+
+    async def fake_guest_state():
+        return SimpleNamespace(enabled=True, version=6)
+
+    monkeypatch.setattr(playback_router, "get_meta", fake_get_meta)
+    monkeypatch.setattr(playback_router, "get_guest_state", fake_guest_state)
+    lim, _ = make_limiter()
+    monkeypatch.setattr(playback_router, "limiter", lim)
+    user = SimpleNamespace(id=99, role="guest")
+    body = PlaybackStartIn(
+        file_id=1,
+        device_id="guest-device",
+        device_label="Guest TV",
+    )
+
+    result = asyncio.run(playback_router.start_playback(body, current_user=user))
+    token = parse_qs(urlparse(result.stream_url).query)["t"][0]
+    claims = verify_stream_token(token, 1)
+
+    assert claims["gv"] == 6
+    assert "ver" not in claims
+    assert claims["uid"] == user.id
 
 
 # ─────────────────────────── router-level tests ──────────────────────────────

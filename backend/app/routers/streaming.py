@@ -237,12 +237,17 @@ async def _auth_stream(file_id: int, t: str | None) -> dict:
     token_uid = claims.get("uid")
     token_ver = claims.get("ver")
 
-    # For family tokens: verify auth_version and family membership
-    if role == "admin" and token_ver is not None and token_uid is not None:
+    # Family tokens must be versioned and bound to the database user ID.
+    if role == "admin":
+        if token_ver is None or token_uid is None:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Invalid token claims",
+            )
         try:
             token_ver_int = int(token_ver)
             token_uid_int = int(token_uid)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED,
                 "Invalid token claims",
@@ -250,7 +255,7 @@ async def _auth_stream(file_id: int, t: str | None) -> dict:
 
         async with async_session() as db:
             user = (await db.execute(
-                select(User).where(User.telegram_id == token_uid_int)
+                select(User).where(User.id == token_uid_int)
             )).scalar_one_or_none()
 
             if user is None:
@@ -268,7 +273,7 @@ async def _auth_stream(file_id: int, t: str | None) -> dict:
 
             # Check family membership
             member = (await db.execute(
-                select(FamilyMember).where(FamilyMember.telegram_id == token_uid_int)
+                select(FamilyMember).where(FamilyMember.telegram_id == user.telegram_id)
             )).scalar_one_or_none()
 
             if member is None or not member.active:

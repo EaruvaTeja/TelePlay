@@ -293,3 +293,24 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - MediaPlayer freeze: `git diff --stat -- web/src/components/MediaPlayer.tsx`: **empty**
 - Scope: `git diff --stat` changed only `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`; no app/code/dependency/deploy file changed.
 - Existing 149-test baseline and all existing security tests remained present; no security test was weakened or deleted.
+
+## T12.81 — Family stream-token revocation
+
+### F-01 closure — CONFIRMED
+
+- `create_stream_token()` now accepts keyword-only `ver: int | None = None` and signs `ver` only when supplied; all previous positional arguments and claims are preserved.
+- Admin `/playback/start` tokens now contain `ver=int(User.auth_version or 0)` and retain `uid=User.id`. Guest issuance continues to use `gv` and does not add a family `ver`.
+- `_auth_stream()` rejects admin tokens missing `uid` or `ver`, looks up the user by `User.id`, rejects absent users and stale versions, and then requires an active `FamilyMember` matching `user.telegram_id`. The gate runs before limiter registration/heartbeat and any metadata/cache/byte access. Limiter owner identity remains the `User.id` claim.
+- **CONFIRMED by real-token TestClient coverage:** family code login → playback start → 206 from the warm byte cache; POST `/auth/logout-all` → the same URL returns 401 without cached media bytes. Simulated user removal deactivates membership and increments `auth_version`; the old URL returns 401. Signed admin tokens missing `ver` or `uid`, and family tokens for a missing User row, are rejected on a warm cache.
+- **CONFIRMED:** existing guest `gv` rejection and warm-cache no-token/wrong-file 401 checks remain; the gate4-style cached 206 test now mints a versioned family token and retains its 206/body/cache-header assertions. This minimal dependent fixture update in `test_stream_cache_auth.py` was explicitly owner-approved after identifying the scope conflict; no assertion was weakened.
+
+### Fresh T12.81 gate evidence — CONFIRMED
+
+- Date: 2026-11-20; branch `hearth/t12.81`; base: latest `main` at `7136de1`.
+- Python 3.13.0; `.venv\Scripts\python -m pytest -q`: **157 passed, 58 warnings**.
+- `.venv\Scripts\python -m compileall -q app`: **PASS**.
+- `.venv\Scripts\pip check`: **PASS; no broken requirements**.
+- Node 20.19.5 / npm 10.8.2; `npm ci`: **PASS**; `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **2 files, 14 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**.
+- npm reported 24 dependency-tree vulnerabilities (1 low, 6 moderate, 15 high, 2 critical); no dependency upgrades or force-fixes were performed.
+- **CONFIRMED:** no new application behavior beyond family stream revocation; no security test was deleted or weakened. The changed cache fixture remains a signed authorized family token with the original positive assertions.
+- **VERIFY ON VPS:** live `/auth/logout-all` and `/user_remove` invalidation of already-issued URLs, including a warm proxy/client cache. No VPS request was made for this task.

@@ -288,14 +288,15 @@ def create_stream_token(
     *,
     gv: int | None = None,
     uid: int | None = None,
+    ver: int | None = None,
 ) -> str:
     """
     Signed, per-file / per-device media token used as `?t=` on the stream URL.
 
     Positional signature is preserved for existing callers and tests.
     `gv` (keyword-only) binds a guest stream token to the credential version so
-    the media path can enforce rotation too — passed by the playback router
-    from chat #7.
+    the media path can enforce rotation too. `ver` binds a family stream token
+    to the user's auth version for logout-all revocation.
     """
     now = _epoch()
     lifetime = int(hours if hours is not None else settings.stream_token_hours)
@@ -312,6 +313,8 @@ def create_stream_token(
         payload["gv"] = int(gv)
     if uid is not None:
         payload["uid"] = int(uid)
+    if ver is not None:
+        payload["ver"] = int(ver)
     return _encode(payload)
 
 

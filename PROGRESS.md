@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t12.80` (task work on `hearth/<task-id>` branches; owner creates + merges PRs)
-* **Current Task:** `T12.81` — Incident provenance and post-incident baseline freeze
+* **Active Branch:** `hearth/t12.81` (task work on `hearth/<task-id>` branches; owner creates + merges PRs)
+* **Current Task:** `T12.82` — Re-baseline and A-item execution ownership
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -33,7 +33,7 @@
 * [ ] **T12.4.1** — Frontend production dependency patch (axios / follow-redirects / form-data; production audit 3 → 0)
 * [ ] **T12.5** — IPv6-only VPS Telegram connectivity (`ipv6=True` in Pyrogram `create_client`)
 * [x] **T12.80** — Post-incident docs re-baseline, F-01/F-02 re-opened, mobile exceptions authorized
-* [ ] **T12.81** — Incident provenance and post-incident baseline freeze
+* [x] **T12.81** — Enforce family stream-token revocation (version claim, User.id binding, active membership)
 * [ ] **T12.82** — Re-baseline and A-item execution ownership
 * [ ] **T12.83** — Family stream identity repair: file/device/owner binding
 * [ ] **T12.84** — `family_members` membership source repair
@@ -55,7 +55,7 @@
 
 * **2026-11-20 post-incident state — CONFIRMED:** VPS origin repointed to GitHub; live SHA `c0aa30f28408add60574de9f9385912131b5524a` (`deploy-T12.7`); silent bot fixed by unconditional bot import in lifespan. WARP SOCKS5 `127.0.0.1:40000` present for GitHub IPv4 egress. Stale bundle `/opt/hearth/hearth-v1.0-rc.bundle` remains at `7629f0a`. Disk 75% (3.0/4.0 GB); RAM 210/512 MB.
 * **Incident items:** A1/A2/A4/A5/A6/A7 are tracked by T12.89 and T12.91; they are **NOT VERIFIED** resolved until VPS evidence is recorded.
-* **Re-opened security work:** F-01 and F-02 are RE-OPENED with owner authorization 2026-11-20; T12.83–T12.85 and T12.89–T12.92 govern repair and gates.
+* **F-01 — CONFIRMED closed in code/tests by T12.81:** family stream version, `User.id` identity, and active membership checks are enforced before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs. **F-02 remains RE-OPENED** under the 2026-11-20 owner authorization; T12.84–T12.85 and T12.89–T12.92 govern its remaining work.
 * **MediaPlayer exceptions:** T12.86 exception #2 mobile-only auto-landscape and T12.87 exception #3 mobile-only tap controls/center play-pause are authorized; freeze resumes after each and T12.88 completes the final freeze. TV/PC behavior and exports/localStorage keys remain protected.
 
 * **Phase R FINAL 2026-11-19:** NO NAT64/DNS64 (native IPv4 returned; IPv4 curl failed). CONFIRMED reachable over IPv6: Telegram Bot API (HTTP 302), Telegram MTProto DC TCP (`2001:b28:f23d:f001::a:443`), Neon endpoint (2406:xx AAAA), apt/PyPI/PGDG/Let's Encrypt. IPv4-only fallbacks: DuckDNS update endpoint = set AAAA manually from PC; GitHub clone = scp release tarball/bundle from PC. Telegram MTProto LIBRARY IPv6 selection = verify at first boot (`/health/ready` Telegram connected).
@@ -116,6 +116,7 @@
 * `2026-11-19 | T12.4.1 | patched axios/follow-redirects/form-data (prod advisories 3 → 0, no --force, majors unchanged); all gates green (frontend 14 tests; backend 143 tests)`
 * `2026-11-19 | T12.5 | added ipv6=True to Pyrogram Client for IPv6-only VPS compatibility`
 * `2026-11-20 | T12.80 | gate passed: 149 backend tests; compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; MediaPlayer diff empty; docs-only`
+* `2026-11-20 | T12.81 | gate passed: pytest 157; compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; family revocation tests green`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

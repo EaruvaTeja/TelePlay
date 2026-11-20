@@ -59,8 +59,39 @@ def test_warm_cache_wrong_file_token_is_401():
     assert ei.value.status_code == 401
 
 
-def test_warm_cache_valid_token_serves_private_bytes():
-    token = create_stream_token(FILE_ID, DEVICE, "admin", "Test")
+def test_warm_cache_valid_token_serves_private_bytes(monkeypatch):
+    class FakeResult:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar_one_or_none(self):
+            return self.value
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            pass
+
+        async def execute(self, query):
+            self.calls += 1
+            if self.calls == 1:
+                user = SimpleNamespace(
+                    id=42,
+                    telegram_id=123456789,
+                    auth_version=0,
+                )
+                return FakeResult(user)
+            return FakeResult(SimpleNamespace(active=True))
+
+    monkeypatch.setattr(sr, "async_session", FakeSession)
+    token = create_stream_token(
+        FILE_ID, DEVICE, "admin", "Test", uid=42, ver=0,
+    )
     resp = _call(token)
     assert resp.status_code == 206
     assert resp.body == HEAD
