@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t12.85`
-* **Current Task:** `T12.86` — OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape
+* **Active Branch:** `hearth/t12.86`
+* **Current Task:** `T12.87` — OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -38,7 +38,7 @@
 * [x] **T12.83** — Safe upload compensation and unique `channel_message_id`
 * [x] **T12.84** — Fail-safe Telegram reconciliation: dry-run sync and confirmed-gone-only cleanup
 * [x] **T12.85** — Complete remaining DB-wake UX and server status; original verify-code scope already satisfied by T12.82
-* [ ] **T12.86** — OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape
+* [x] **T12.86** — OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape
 * [ ] **T12.87** — OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls
 * [ ] **T12.88** — Mobile exception parity and final player freeze
 * [ ] **T12.89** — Schema proof, deploy runbooks, proxy validation, and provenance
@@ -122,6 +122,7 @@
 * `2026-11-20 | T12.83 | gate passed: pytest 167 (61 warnings); compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; upload compensation and unique-index tests green`
 * `2026-11-20 | T12.84 | gate passed: pytest 177 (61 warnings); compileall; pip check; Node 20.19.5/npm 10.8.2 ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; fail-safe reconciliation tests green`
 * `2026-11-20 | T12.85 | gate passed: pytest 190 (61 warnings); compileall; pip check; Node 20.19.5/npm 10.8.2 npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; MediaPlayer diff empty`
+* `2026-11-20 | T12.86 | gate passed: pytest 190 (61 warnings); compileall; pip check; Node 20.19.5/npm 10.8.2 npm ci/lint/typecheck; 166 frontend tests; build; dist/_redirects present`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

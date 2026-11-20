@@ -54,6 +54,14 @@ import {
 } from 'lucide-react';
 import { TelegramFile, formatDuration, useUpdateProgress, useFile, api } from '../lib/api';
 import { useAppStore } from '../lib/store';
+import { getDeviceKind } from '../lib/device';
+import {
+    computePseudoLandscape,
+    isPhonePlayer,
+    lockLandscape,
+    shouldAutoLandscape,
+    unlockLandscape,
+} from '../lib/mobilePlayer';
 
 /* ═══════════════════════════ Types & constants ═══════════════════════════ */
 
@@ -127,6 +135,10 @@ const PLAYER_CSS = `
 [data-hp-root] [data-hp-wrap]{pointer-events:none;}
 [data-hp-root] [data-hp-wrap][data-on="1"] button,
 [data-hp-root] [data-hp-wrap][data-on="1"] [role="slider"]{pointer-events:auto;}
+[data-hp-root] [data-hp-stage][data-hp-pseudo-landscape="true"]{
+position:fixed!important;inset:50% auto auto 50%!important;width:100vh!important;height:100vw!important;
+transform:translate(-50%,-50%) rotate(90deg)!important;transform-origin:center;
+}
 
 .hp-scroll{scrollbar-width:thin;scrollbar-color:#115e59 #0e1514;}
 .hp-scroll::-webkit-scrollbar{width:10px;}
@@ -173,6 +185,11 @@ const resolveApiUrl = (path: string): string => {
     const origin = /^https?:\/\//i.test(base) ? new URL(base).origin : window.location.origin;
     return new URL(path, origin).href;
 };
+
+function isPortraitViewport(): boolean {
+    return typeof window !== 'undefined'
+        && (window.matchMedia?.('(orientation: portrait)').matches ?? window.innerHeight > window.innerWidth);
+}
 
 function getDeviceId(): string {
     try {
@@ -1153,6 +1170,8 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const details: PlayerFile = (extendedFile as PlayerFile | undefined) ?? file;
 
     const isVideo = details.file_type === 'video' || (details.mime_type ?? '').startsWith('video/');
+    const phonePlayer = isPhonePlayer();
+    const playerKind = getDeviceKind();
     const container = containerOf(details.file_name, details.mime_type);
     const riskyContainer = ['MKV', 'AVI', 'WMV', 'FLV', 'TS'].includes(container)
         || (details.mime_type ?? '').includes('matroska');
@@ -1192,12 +1211,17 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const [fsSupported] = useState(() => typeof document !== 'undefined' && !!document.fullscreenEnabled);
     const [pipSupported] = useState(() => typeof document !== 'undefined' && !!document.pictureInPictureEnabled);
     const [videoMounted, setVideoMounted] = useState(false);
+    const [isPortrait, setIsPortrait] = useState(() => phonePlayer && isPortraitViewport());
+    const [pseudoLandscapeEnabled, setPseudoLandscapeEnabled] = useState(false);
+    const [nativeLandscapeUnsupported, setNativeLandscapeUnsupported] = useState(false);
+    const [showRotateHint, setShowRotateHint] = useState(false);
     const [secStore] = useState<Store<number>>(() => createStore(0));
     const [flashStore] = useState<Store<FlashState | null>>(() => createStore<FlashState | null>(null));
 
     /* ── Refs ── */
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const stageRef = useRef<HTMLDivElement>(null);
     const ctlWrapRef = useRef<HTMLDivElement>(null);
     const topRef = useRef<HTMLDivElement>(null);
     const barRef = useRef<HTMLDivElement>(null);
@@ -1243,6 +1267,11 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const prefsRef = useRef(prefs);
     const mediaErrorRef = useRef<string | null>(null);
     const keyHandlerRef = useRef<((e: KeyboardEvent) => void) | null>(null);
+    const landscapeAttemptedRef = useRef(false);
+    const landscapeRequestIdRef = useRef(0);
+    const rotateHintShownRef = useRef(false);
+    const isMinimizedRef = useRef(isMinimized);
+    const phonePlayerMountedRef = useRef(false);
 
     const isPaused = useCallback(() => videoRef.current?.paused ?? true, []);
     const { phase, src, mode, active, error: sessionError, retry } =
@@ -1256,7 +1285,41 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     dialogOpenRef.current = dialogOpen;
     prefsRef.current = prefs;
     mediaErrorRef.current = mediaError;
+    isMinimizedRef.current = isMinimized;
     durationRef.current = duration || details.duration || 0;
+
+    useEffect(() => {
+        if (!phonePlayer) return;
+        const updateOrientation = () => {
+            const portrait = isPortraitViewport();
+            setIsPortrait(portrait);
+            if (!portrait) setShowRotateHint(false);
+        };
+        updateOrientation();
+        window.addEventListener('orientationchange', updateOrientation);
+        window.addEventListener('resize', updateOrientation);
+        return () => {
+            window.removeEventListener('orientationchange', updateOrientation);
+            window.removeEventListener('resize', updateOrientation);
+        };
+    }, [phonePlayer]);
+
+    useEffect(() => {
+        if (!phonePlayer || !showRotateHint) return;
+        const timer = setTimeout(() => setShowRotateHint(false), 4500);
+        return () => clearTimeout(timer);
+    }, [phonePlayer, showRotateHint]);
+
+    useEffect(() => {
+        if (!phonePlayer) return;
+        phonePlayerMountedRef.current = true;
+        return () => {
+            phonePlayerMountedRef.current = false;
+            if (isPhonePlayer()) {
+                unlockLandscape();
+            }
+        };
+    }, [phonePlayer]);
 
     const computeResume = (f: PlayerFile) => {
         const pos = f.last_pos ?? 0;
@@ -1374,13 +1437,55 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     };
 
     /* ── Transport ── */
+    const requestLandscapeOnPlay = useCallback(() => {
+        if (!isPhonePlayer()
+            || !shouldAutoLandscape(isVideo, playerKind, isPortrait)
+            || isMinimizedRef.current
+            || landscapeAttemptedRef.current) return;
+        const stage = stageRef.current;
+        if (!stage) return;
+
+        landscapeAttemptedRef.current = true;
+        const requestId = ++landscapeRequestIdRef.current;
+        void lockLandscape(stage).then(locked => {
+            if (requestId !== landscapeRequestIdRef.current
+                || !phonePlayerMountedRef.current
+                || !isPhonePlayer()) return;
+            setNativeLandscapeUnsupported(!locked);
+            if (locked) {
+                setPseudoLandscapeEnabled(false);
+                return;
+            }
+            if (isMinimizedRef.current
+                || !shouldAutoLandscape(isVideo, getDeviceKind(), isPortraitViewport())) return;
+            setPseudoLandscapeEnabled(true);
+            if (!rotateHintShownRef.current) {
+                rotateHintShownRef.current = true;
+                setShowRotateHint(true);
+            }
+        });
+    }, [isVideo, isPortrait, playerKind]);
+
+    const releasePhoneLandscape = useCallback(() => {
+        if (!isPhonePlayer()) return;
+        landscapeRequestIdRef.current++;
+        landscapeAttemptedRef.current = false;
+        unlockLandscape();
+    }, []);
+
     const togglePlay = useCallback(() => {
         const v = videoRef.current;
         if (!v) return;
-        if (v.paused || v.ended) v.play().catch(() => { /* autoplay policy */ });
+        if (v.paused || v.ended) {
+            requestLandscapeOnPlay();
+            v.play().catch(() => { /* autoplay policy */ });
+        }
         else v.pause();
-    }, []);
-    const playMedia = () => { videoRef.current?.play().catch(() => { /* noop */ }); };
+    }, [requestLandscapeOnPlay]);
+    const playMedia = () => {
+        requestLandscapeOnPlay();
+        videoRef.current?.play().catch(() => { /* noop */ });
+    };
     const pauseMedia = () => { videoRef.current?.pause(); };
 
     /** Absolute seek (scrubber, number keys, restart). Cancels any in-flight hold-seek burst. */
@@ -1594,14 +1699,22 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     /* ── Close / minimize / settings ── */
     const closePlayer = useStableCallback(() => {
         saveRef.current(true);
-        try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ }); } catch { /* noop */ }
+        if (isPhonePlayer()) releasePhoneLandscape();
+        else {
+            try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ }); } catch { /* noop */ }
+        }
         try { if (document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => { /* noop */ }); } catch { /* noop */ }
         onClose();
     });
 
     const minimize = useStableCallback(() => {
         setSettingsOpen(false);
-        try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ }); } catch { /* noop */ }
+        setShowRotateHint(false);
+        setPseudoLandscapeEnabled(false);
+        if (isPhonePlayer()) releasePhoneLandscape();
+        else {
+            try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ }); } catch { /* noop */ }
+        }
         setMinimized(true);
     });
     const expand = useStableCallback(() => setMinimized(false));
@@ -1767,6 +1880,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         if (v) {
             restartAt(lastPosRef.current > 1 ? lastPosRef.current : (resumePointRef.current ?? 0));
             v.load();
+            requestLandscapeOnPlay();
             v.play().catch(() => { /* noop */ });
         }
     };
@@ -2158,6 +2272,13 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
 
     const currentAudio = audioIndex ?? (serverAudio.find(t => t.default)?.index ?? 0);
     const showCtl = effectiveShow;
+    const pseudoLandscape = phonePlayer && computePseudoLandscape(
+        playerKind,
+        isPortrait,
+        pseudoLandscapeEnabled,
+        isVideo,
+        isMinimized,
+    );
 
     /* ═══════════════════════════════ Render ═══════════════════════════════ */
 
@@ -2186,6 +2307,9 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
 
             {/* The stage stays mounted while minimized (collapsed to 1px) so the <video> keeps playing in the mini bar. */}
             <div
+                ref={stageRef}
+                data-hp-stage
+                data-hp-pseudo-landscape={pseudoLandscape ? 'true' : undefined}
                 className={isMinimized ? 'pointer-events-none absolute left-0 top-0 h-px w-px overflow-hidden opacity-0' : 'absolute inset-0'}
                 aria-hidden={isMinimized || undefined}
             >
@@ -2202,6 +2326,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                         onClick={togglePlay}
                         onDoubleClick={fsSupported ? toggleFullscreen : undefined}
                         onPlay={() => {
+                            requestLandscapeOnPlay();
                             setPlaying(true);
                             setFinished(false);
                             revealControls();
@@ -2246,6 +2371,31 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                             />
                         ))}
                     </video>
+                )}
+
+                {phonePlayer && isVideo && nativeLandscapeUnsupported && isPortrait && !isMinimized && (
+                    <button
+                        type="button"
+                        data-hp-controls
+                        aria-pressed={pseudoLandscapeEnabled}
+                        aria-label={pseudoLandscapeEnabled ? 'Use portrait view' : 'Use landscape view'}
+                        onClick={() => {
+                            setShowRotateHint(false);
+                            setPseudoLandscapeEnabled(enabled => !enabled);
+                        }}
+                        className="hp-focus absolute right-4 top-20 z-[110] rounded-full border border-white/20 bg-black/70 px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                        {pseudoLandscapeEnabled ? 'Portrait view' : 'Landscape view'}
+                    </button>
+                )}
+
+                {phonePlayer && showRotateHint && pseudoLandscape && (
+                    <div
+                        role="status"
+                        className="pointer-events-none absolute left-1/2 top-1/4 z-[110] -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-center text-xs font-semibold text-white shadow-lg"
+                    >
+                        Turn your phone sideways for the best view.
+                    </div>
                 )}
 
                 {videoMounted && !isVideo && (
