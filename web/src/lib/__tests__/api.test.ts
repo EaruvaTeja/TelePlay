@@ -7,11 +7,13 @@ import {
   api,
   errorMessage,
   fetchMe,
+  fetchPlaybackCount,
   loginWithCode,
   logout,
   startPlayback,
   streamFile,
 } from "../api";
+import { getLiveDevicesPresentation } from "../../components/LiveDevicesChip";
 
 const DEVICE_KEY = "hearth_device_id";
 
@@ -131,6 +133,55 @@ describe("api contracts (T8)", () => {
       message: "Maximum concurrent playback devices reached",
     });
     expect("active" in result && result.active).toHaveLength(1);
+  });
+
+  it.each([
+    { active: 0, limit: 2, color: "#9ca3af" },
+    { active: 1, limit: 2, color: "#34d399" },
+    { active: 2, limit: 2, color: "#fbbf24" },
+    { active: 3, limit: 2, color: "#f43f5e" },
+    { active: 5, limit: 2, color: "#f43f5e" },
+    { active: 1, limit: 5, color: "#34d399" },
+  ])(
+    "maps $active active devices with limit $limit to chip text and color",
+    ({ active, limit, color }) => {
+      expect(getLiveDevicesPresentation(active, limit)).toEqual({
+        color,
+        desktopText: `${active} watching`,
+        phoneText: `${active}/${limit}`,
+      });
+    },
+  );
+
+  it("fetches the household playback count", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({
+      data: { active: 1, limit: 3 },
+    } as never);
+
+    await expect(fetchPlaybackCount()).resolves.toEqual({
+      active: 1,
+      limit: 3,
+    });
+    expect(api.get).toHaveBeenCalledWith("/playback/count");
+  });
+
+  it.each([404, 405])(
+    "treats playback count HTTP %i as unavailable",
+    async (status) => {
+      vi.spyOn(api, "get").mockRejectedValue({
+        isAxiosError: true,
+        response: { status },
+      });
+
+      await expect(fetchPlaybackCount()).resolves.toBeNull();
+    },
+  );
+
+  it("preserves other playback count errors for React Query", async () => {
+    const failure = new Error("network unavailable");
+    vi.spyOn(api, "get").mockRejectedValue(failure);
+
+    await expect(fetchPlaybackCount()).rejects.toBe(failure);
   });
 
   it("builds a signed per-file stream URL with the token encoded", () => {

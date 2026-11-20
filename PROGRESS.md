@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t13.8.2`
-* **Current Task:** `T13.10` — Issue 6b: home live-devices chip, popup text, and flow verification
+* **Active Branch:** `hearth/t13.10`
+* **Current Task:** `T13.11` — Final freeze gates, RC candidate, and deploy handoff
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -56,7 +56,7 @@
 * [x] **T13.8.1** — OWNER-AUTHORIZED Exception #5.7.1: phone lock UX polish
 * [x] **T13.8.2** — OWNER-AUTHORIZED Exception #5.7.2: phone lock state icons, drag dot, and notice copy
 * [x] **T13.9** — Issue 6a: household playback count endpoint
-* [ ] **T13.10** — Issue 6b: home live-devices chip, popup text, and flow verification
+* [x] **T13.10** — Issue 6b: home live-devices chip, popup text, and flow verification
 * [ ] **T13.11** — Final freeze gates, RC candidate, and deploy handoff (docs only)
 * [ ] **T12.91** — Stale bundle and VPS resource recovery — ON HOLD
 * [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R) — ON HOLD
@@ -173,6 +173,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * `2026-11-20 | T13.9 | gate passed: pytest 230 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 61 frontend tests; build (1,529 modules) and dist/_redirects; production audit 0`
 * `2026-11-20 | T13.8.1 | gate passed: Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 78 frontend tests; build (1,529 modules) and dist/_redirects; no backend changes; Current Task remains T13.10`
 * `2026-11-20 | T13.8.2 | gate passed: Node 20.20.2/npm 10.8.2 npm ci; focused 64 and full 78 frontend tests (baseline unchanged); lint 0 warnings/typecheck/build (1,529 modules); dist/_redirects present; Current Task remains T13.10`
+* `2026-11-20 | T13.10 | gate passed: pytest 230 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 npm ci; lint 0 warnings/typecheck; 88 frontend tests; build (1,530 modules) and dist/_redirects; production audit 0`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 
