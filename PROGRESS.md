@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t13.7`
-* **Current Task:** `T13.8` — Issue 8: phone control lock with drag-to-pause/play
+* **Active Branch:** `hearth/t13.8`
+* **Current Task:** `T13.9` — Issue 6a: household playback count endpoint
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -52,7 +52,7 @@
 * [x] **T13.5** — Issue 3: glass center play/pause button (visual only)
 * [x] **T13.6** — Issue 4: phone brightness/volume drag gestures and indicator
 * [x] **T13.7** — Issue 5: TV/PC/tablet side controls and D-pad navigation
-* [ ] **T13.8** — Issue 8: phone control lock with drag-to-pause/play
+* [x] **T13.8** — Issue 8: phone control lock with drag-to-pause/play
 * [ ] **T13.9** — Issue 6a: household playback count endpoint
 * [ ] **T13.10** — Issue 6b: home live-devices chip, popup text, and flow verification
 * [ ] **T13.11** — Final freeze gates, RC candidate, and deploy handoff (docs only)
@@ -167,6 +167,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * `2026-11-20 | T13.5 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 35 frontend tests; build and dist/_redirects; production audit 0`
 * `2026-11-20 | T13.6 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 44 frontend tests; build (1,529 modules) and dist/_redirects; production audit 0`
 * `2026-11-20 | T13.7 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2 lint 0 warnings/typecheck; 44 frontend tests; build (1,529 modules) and dist/_redirects; production audit 0`
+* `2026-11-20 | T13.8 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 61 frontend tests; build (1,529 modules) and dist/_redirects; production audit 0`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

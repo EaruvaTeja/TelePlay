@@ -781,3 +781,57 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **VERIFY ON VPS:** none required; this is a web-only change and the old server contract is unchanged.
 - **CONFIRMED by source review:** the existing dedicated media-key branches return before the general `revealControls` call (previously recorded under T13.3); they were left unchanged to preserve key parity. Thus, those special media keys do not independently re-arm the controls timer. This is pre-existing and not introduced by T13.7.
 - **CONFIRMED:** no task-scope deviation. Deleted tests: **none**. No Samsung TV, PC/tablet physical-device, or VPS behavior was tested.
+
+## T13.8 — Phone control lock with drag-to-pause/play
+
+### Changes and scope — CONFIRMED
+
+- **CONFIRMED:** added phone-only lock state local to `MediaPlayerContent`; it is not persisted and adds no preference field or storage key. The parent keys the content by `previewFile.id`, so closing the player unmounts the state and opening a different file mounts an unlocked player.
+- **CONFIRMED:** the phone controls overlay now contains a left-edge `Lock` button (40×40px, 12px inset, translucent white fill and thin border). Locking hides the controls, center controls, seek flash, resume prompt, gesture indicator, and regular toasts without pausing playback. A short “Locked” status is shown for 1 second.
+- **CONFIRMED:** tapping the locked video surface reveals only the left handle. While playing it hides after the existing 3-second `HIDE_AFTER_MS`; while paused it remains visible and shows Play. The primary-pointer handle captures the pointer, uses `touch-action: none`, tracks rightward movement up to 56px, and snaps back with a 150ms transform transition. A movement under 8px unlocks; a horizontal right drag of at least 32px calls the existing pause/play engine and leaves the lock active. Pointer cancel only resets the gesture.
+- **CONFIRMED:** the existing phone brightness/volume pointer gesture is bypassed while locked. Dialogs, playback errors, and end-of-file release the lock; Enter/OK/Space on a focused handle also unlocks it. Existing media playback/session and heartbeat/resume engines were not changed.
+- **CONFIRMED:** the left lock button ends at x=52px (12px inset + 40px width); the shared indicator starts at `max(64px, 14vw)`, leaving at least 12px of separation. The indicator is suppressed while locked. Actual portrait/landscape overlap behavior remains **VERIFY ON DEVICE**.
+- **CONFIRMED:** files touched: `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` was unchanged because the T13.8 card matched implementation. No dependencies, server/API contracts, backend files, database schema, deployment files, exports, or storage keys changed.
+- **CONFIRMED:** no tests were deleted. Added 17 pure-helper cases for tap/drag classification, 32px threshold, opposite playback action, and end/error/dialog auto-unlock. The frontend suite increased from 44 at the T13.7 base to 61. The T13.1 baseline was 178; the authorized T13.4 deletions (147 cases for removed orientation behavior, with four fallback tests added) remain documented in T13.4. No additional baseline cases were removed.
+- **CONFIRMED:** every `MediaPlayer.tsx` diff hunk is within Exception #5.7: (1) import/helper and pointer-gesture type; (2) ephemeral lock/handle/notice state and refs; (3) handle timeout, focus rescue, lock/unlock, and guarded control reveal; (4) paused-handle persistence and error/end/dialog auto-unlock; (5) existing Back-key list reused for the phone-only locked Back path; (6) cleanup plus guards on existing phone gesture handlers; (7) primary-pointer capture, movement, threshold, toggle, and cancel handlers; (8) locked surface-tap behavior; (9) locked-only visibility gates for indicators, seek/resume feedback, center controls, overlay and toasts; and (10) the phone-only lock button. No TV/PC/tablet behavior was intentionally changed.
+
+### Back handling and key parity — CONFIRMED by source review
+
+The existing `handleBack` closes settings first; closes the player if a dialog is open; otherwise hides visible controls when playing and not buffering; and closes the player in the remaining cases. Escape, Backspace, BrowserBack, GoBack, and Tizen keyCodes 461/10009 call it. Source search found no player or app `popstate` handler; `App.tsx` calls `history.replaceState` only to remove the one-time `code` query parameter. With the phone lock active, the first such Back reveals/focuses the handle and shows “Tap the lock to unlock”; a second within 2 seconds closes the player.
+
+| Input / context | Existing behavior before T13.8 | After T13.8 |
+|---|---|---|
+| Phone Back: Escape / Backspace / BrowserBack / GoBack / keyCodes 461 and 10009 | Existing `handleBack` behavior described above. | Unlocked: unchanged. Locked: first Back shows the handle and hint; second within 2 seconds closes the player. |
+| Phone media keys: PlayPause / TogglePlayPause / Play / Pause / Stop / Rewind / FastForward (including existing keyCodes) | Toggle/play/pause, close, and ±30s seek through existing handlers. | Unlocked: unchanged. Locked: consumed; pause/play is only by a right-drag on the handle. |
+| Phone Enter / OK / Space | Focused controls activate, otherwise the existing playback shortcut applies. | Unlocked: unchanged. Locked: unlocks only when the handle is focused; other activations are consumed. Repeated activation does not repeat the unlock. |
+| Phone arrows, seek keys, mute/fullscreen/aspect/rate/digit shortcuts | Existing navigation and media shortcuts. | Unlocked: unchanged. Locked: consumed; Tab reveals/focuses the handle if hidden, and native Tab navigation remains available while it is visible. |
+| Phone surface tap / lock handle | Surface tap toggles controls; no lock handle existed. | Locked surface tap reveals only the handle; handle movement under 8px unlocks, a rightward horizontal drag ≥32px toggles pause/play, and other drags do not unlock. |
+| TV / PC / tablet keys and controls | Existing player controls and key mapping. | Unchanged by source: the lock control is rendered only when `phonePlayer` is true, the locked key branch is phone-gated, and the lock state cannot be entered on these device kinds. Physical parity remains **VERIFY ON TV / VERIFY ON DEVICE**. |
+
+### Acceptance and verification
+
+| Acceptance item | Evidence / status |
+|---|---|
+| Lock sits left of the T13.6 indicator without source-level overlap | **CONFIRMED by source math:** 12px inset + 40px width ends at 52px; indicator begins at ≥64px. **VERIFY ON DEVICE:** portrait/landscape rendering. |
+| Lock hides controls without pausing playback | **CONFIRMED by source:** lock action changes UI state only and does not call pause/play. **VERIFY ON DEVICE:** real touch behavior. |
+| Locked surface tap shows only the handle; 3s playing timeout | **CONFIRMED by source:** locked surface handler reveals the handle; timer uses `HIDE_AFTER_MS`; paused state cancels auto-hide. **VERIFY ON DEVICE:** timing and touch behavior. |
+| Right drag pauses, a further right drag plays, and lock stays active | **CONFIRMED by tests/source:** threshold and action helpers pass; existing pause/play functions are called without unlocking. **VERIFY ON DEVICE:** pointer capture and repeated gestures. |
+| Handle tap unlocks and controls return | **CONFIRMED by source:** under-8px classification unlocks; reveal follows the existing control timeout. **VERIFY ON DEVICE:** touch/assistive input behavior. |
+| Brightness/volume drags do nothing while locked | **CONFIRMED by source:** the existing phone gesture start/update paths check the lock ref. **VERIFY ON DEVICE:** no accidental edge gesture. |
+| End, error, and dialogs release lock | **CONFIRMED by tests/source:** each auto-unlock cause is tested and wired to playback/dialog state. **VERIFY ON DEVICE:** device-limit and playback-error usability. |
+| Close/reopen starts unlocked | **CONFIRMED by source:** local state resets on unmount/remount; different file is keyed by ID. |
+| TV/PC/tablet do not render lock or change behavior | **CONFIRMED by source/diff:** phone-only render and event gates; no device-specific path is activated elsewhere. **VERIFY ON TV / VERIFY ON DEVICE:** physical parity. |
+
+### Gates — CONFIRMED
+
+- Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings** (baseline 226).
+- Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 61 tests passed** (44 at T13.7; +17, none deleted); `npm run build` — **PASS** (1,529 modules); `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** backend count matches T13.1 (226); frontend count is 61 versus 178 at T13.1 due only to the previously authorized T13.4 orientation-test deletions, plus this task's 17 additions. `git diff --check` — **PASS**. No phone, TV, or VPS behavior was tested.
+
+### Parity, verification, and deviations
+
+- **CONFIRMED by source/diff:** TV/PC/tablet lock UI is not rendered and their key event handling remains unchanged; no server changes are required, so the web remains compatible with the old server.
+- **VERIFY ON DEVICE:** phone portrait and landscape lock placement; touch capture, tap/drag thresholds, pause/play icon, auto-hide/permanent-paused handle, brightness/volume blocking, error/dialog unlock, and close/reopen reset.
+- **VERIFY ON TV:** Samsung TV controls and key mapping remain unchanged.
+- **VERIFY ON VPS:** none; this is a phone-only client UI change with no API/server contract change.
+- **CONFIRMED:** no task-scope deviations. `PLAN.md` unchanged; deleted tests: **none**. No device or VPS checks are claimed.

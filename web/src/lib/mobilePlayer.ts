@@ -1,6 +1,7 @@
 import { getDeviceKind, isTV, type DeviceKind } from './device';
 
 export type PlayerDragSide = 'left' | 'right';
+export type LockGestureClassification = 'tap' | 'drag' | 'ignore';
 
 export function isPhonePlayer(): boolean {
     return getDeviceKind() === 'phone' && !isTV();
@@ -61,4 +62,28 @@ export function selectDragSide(clientX: number, stageLeft: number, stageWidth: n
 
 export function shouldUseDeviceVolumeButtons(isPhone: boolean, volumeWritable: boolean | null): boolean {
     return isPhone && volumeWritable !== true;
+}
+
+export function classifyLockGesture(deltaX: number, deltaY: number): LockGestureClassification {
+    const horizontal = Math.abs(deltaX);
+    const vertical = Math.abs(deltaY);
+    if (Math.sqrt(horizontal * horizontal + vertical * vertical) < 8) return 'tap';
+    if (horizontal > 8 && horizontal > vertical) return 'drag';
+    return 'ignore';
+}
+
+export function shouldToggleLockedPlayback(deltaX: number): boolean {
+    return Number.isFinite(deltaX) && deltaX >= 32;
+}
+
+export function getLockedPlaybackAction(isPlaying: boolean): 'pause' | 'play' {
+    return isPlaying ? 'pause' : 'play';
+}
+
+export function shouldAutoUnlockControlLock(
+    videoEnded: boolean,
+    hasError: boolean,
+    dialogOpen: boolean,
+): boolean {
+    return videoEnded || hasError || dialogOpen;
 }

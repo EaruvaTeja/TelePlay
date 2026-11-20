@@ -50,7 +50,7 @@ import type {
 import {
     ArrowLeft, AlertTriangle, Check, ChevronDown, ChevronUp, Crop, FastForward,
     Film, Gauge, Info, Layers, Loader2, Maximize, Minimize, Monitor, Music,
-    Minus, Pause, PictureInPicture2, Play, Plus, RectangleHorizontal, Rewind, RotateCcw,
+    Lock, Minus, Pause, PictureInPicture2, Play, Plus, RectangleHorizontal, Rewind, RotateCcw,
     Settings, Smartphone, Sparkles, StretchHorizontal, Subtitles, Sun, Tablet, Tv, Users,
     Volume1, Volume2, VolumeX, X,
 } from 'lucide-react';
@@ -60,12 +60,16 @@ import { getDeviceKind } from '../lib/device';
 import {
     isPhonePlayer,
     calculateDragValue,
+    classifyLockGesture,
     clampBrightness,
     clampVolume,
+    getLockedPlaybackAction,
     resolveSurfaceTap,
     selectDragSide,
+    shouldAutoUnlockControlLock,
     shouldClaimVerticalDrag,
     shouldUseDeviceVolumeButtons,
+    shouldToggleLockedPlayback,
     shouldUseWebkitFullscreenFallback,
     sliderRatio,
     type PlayerDragSide,
@@ -120,6 +124,11 @@ interface SurfaceGesture {
     controlsVisible: boolean;
     claimed: boolean;
     hintText?: string;
+}
+interface LockHandleGesture {
+    pointerId: number;
+    startX: number;
+    startY: number;
 }
 type MutableRef<T> = { current: T | null };
 
@@ -1240,6 +1249,12 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const [mediaError, setMediaError] = useState<string | null>(null);
     const [finished, setFinished] = useState(false);
     const [controlsVisible, setControlsVisible] = useState(true);
+    const [controlsLocked, setControlsLocked] = useState(false);
+    const [lockHandleVisible, setLockHandleVisible] = useState(false);
+    const [lockHandleHint, setLockHandleHint] = useState<string | null>(null);
+    const [lockHandleOffset, setLockHandleOffset] = useState(0);
+    const [lockHandleDragging, setLockHandleDragging] = useState(false);
+    const [lockedNoticeVisible, setLockedNoticeVisible] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isWebkitFullscreen, setIsWebkitFullscreen] = useState(false);
@@ -1271,6 +1286,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const dialogRef = useRef<HTMLDivElement>(null);
     const scrubberRef = useRef<HTMLDivElement>(null);
     const playBtnRef = useRef<HTMLButtonElement>(null);
+    const lockHandleRef = useRef<HTMLButtonElement>(null);
     const brightnessClusterRef = useRef<HTMLDivElement>(null);
     const volumeClusterRef = useRef<HTMLDivElement>(null);
     const brightnessPlusRef = useRef<HTMLButtonElement>(null);
@@ -1298,7 +1314,12 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const holdRef = useRef<{ dir: number; start: number; total: number; last: number } | null>(null);
     const dragRef = useRef(false);
     const surfaceGestureRef = useRef<SurfaceGesture | null>(null);
+    const lockHandleGestureRef = useRef<LockHandleGesture | null>(null);
     const indicatorFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lockHandleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lockedNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lockedBackAtRef = useRef<number | null>(null);
+    const lockActivationKeyRef = useRef<{ key: string; code: number } | null>(null);
     const suppressSurfaceClickUntilRef = useRef(0);
     const volumeWritableRef = useRef<boolean | null>(null);
     const volumeProbeInProgressRef = useRef(false);
@@ -1314,6 +1335,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const lastCommitRef = useRef(-1);
     const lastMoveRef = useRef(0);
     const playingRef = useRef(false);
+    const controlsLockedRef = useRef(false);
     const bufferingRef = useRef(true);
     const settingsOpenRef = useRef(false);
     const dialogOpenRef = useRef(false);
@@ -1328,6 +1350,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const dialogOpen = phase === 'limited' || phase === 'ended' || !!sessionError || !!mediaError;
     const effectiveShow = controlsVisible || !playing || buffering || settingsOpen || dialogOpen;
     playingRef.current = playing;
+    controlsLockedRef.current = controlsLocked;
     bufferingRef.current = buffering;
     settingsOpenRef.current = settingsOpen;
     dialogOpenRef.current = dialogOpen;
@@ -1567,7 +1590,57 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         setControlsVisible(false);
     }, []);
 
+    const clearLockHandleTimer = useCallback(() => {
+        if (lockHandleTimer.current) {
+            clearTimeout(lockHandleTimer.current);
+            lockHandleTimer.current = null;
+        }
+    }, []);
+
+    const hideLockHandle = useCallback(() => {
+        lockHandleTimer.current = null;
+        if (!controlsLockedRef.current) return;
+        if (!playingRef.current) {
+            setLockHandleVisible(true);
+            return;
+        }
+        if (document.activeElement === lockHandleRef.current) {
+            containerRef.current?.focus({ preventScroll: true });
+        }
+        setLockHandleVisible(false);
+        setLockHandleHint(null);
+    }, []);
+
+    const scheduleLockHandleHide = useCallback(() => {
+        clearLockHandleTimer();
+        if (!controlsLockedRef.current || !playingRef.current) return;
+        lockHandleTimer.current = setTimeout(hideLockHandle, HIDE_AFTER_MS);
+    }, [clearLockHandleTimer, hideLockHandle]);
+
+    const showLockHandle = useCallback((hint?: string) => {
+        if (!controlsLockedRef.current) return;
+        if (lockedNoticeTimer.current) {
+            clearTimeout(lockedNoticeTimer.current);
+            lockedNoticeTimer.current = null;
+        }
+        setLockedNoticeVisible(false);
+        setLockHandleVisible(true);
+        setLockHandleHint(hint || null);
+        scheduleLockHandleHide();
+        requestAnimationFrame(() => lockHandleRef.current?.focus({ preventScroll: true }));
+    }, [scheduleLockHandleHide]);
+
+    const showLockedNotice = useCallback(() => {
+        if (lockedNoticeTimer.current) clearTimeout(lockedNoticeTimer.current);
+        setLockedNoticeVisible(true);
+        lockedNoticeTimer.current = setTimeout(() => {
+            lockedNoticeTimer.current = null;
+            setLockedNoticeVisible(false);
+        }, 1000);
+    }, []);
+
     const revealControls = useCallback(() => {
+        if (controlsLockedRef.current) return;
         setControlsVisible(true);
         if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
         const v = videoRef.current;
@@ -1589,6 +1662,60 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         }
     }, [hideControlsNow]);
 
+    const lockControls = useCallback(() => {
+        if (!phonePlayer || controlsLockedRef.current) return;
+        controlsLockedRef.current = true;
+        setControlsLocked(true);
+        setControlsVisible(false);
+        lockedBackAtRef.current = null;
+        lockHandleGestureRef.current = null;
+        setLockHandleVisible(false);
+        setLockHandleHint(null);
+        setLockHandleOffset(0);
+        setLockHandleDragging(false);
+        clearLockHandleTimer();
+        if (lockedNoticeTimer.current) {
+            clearTimeout(lockedNoticeTimer.current);
+            lockedNoticeTimer.current = null;
+        }
+        if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+        if (indicatorFadeTimer.current) {
+            clearTimeout(indicatorFadeTimer.current);
+            indicatorFadeTimer.current = null;
+        }
+        setGestureIndicator(null);
+        surfaceGestureRef.current = null;
+        suppressSurfaceClickUntilRef.current = 0;
+        if (flashTimer.current) {
+            clearTimeout(flashTimer.current);
+            flashTimer.current = null;
+        }
+        flashStore.set(null);
+        containerRef.current?.focus({ preventScroll: true });
+        showLockedNotice();
+    }, [clearLockHandleTimer, flashStore, phonePlayer, showLockedNotice]);
+
+    const unlockControls = useCallback(() => {
+        if (!controlsLockedRef.current) return;
+        controlsLockedRef.current = false;
+        setControlsLocked(false);
+        clearLockHandleTimer();
+        if (lockedNoticeTimer.current) {
+            clearTimeout(lockedNoticeTimer.current);
+            lockedNoticeTimer.current = null;
+        }
+        lockedBackAtRef.current = null;
+        lockHandleGestureRef.current = null;
+        setLockHandleVisible(false);
+        setLockHandleHint(null);
+        setLockHandleOffset(0);
+        setLockHandleDragging(false);
+        setLockedNoticeVisible(false);
+        containerRef.current?.focus({ preventScroll: true });
+        setControlsVisible(true);
+        revealControls();
+    }, [clearLockHandleTimer, revealControls]);
+
     useEffect(() => {
         if (playing && !buffering) revealControls();
         else {
@@ -1596,6 +1723,26 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             setControlsVisible(true);
         }
     }, [playing, buffering, revealControls]);
+
+    useEffect(() => {
+        if (!controlsLocked) return;
+        if (!playing) {
+            clearLockHandleTimer();
+            setLockHandleVisible(true);
+        } else if (lockHandleVisible) {
+            scheduleLockHandleHide();
+        }
+    }, [controlsLocked, playing, lockHandleVisible, clearLockHandleTimer, scheduleLockHandleHide]);
+
+    useEffect(() => {
+        if (controlsLocked && shouldAutoUnlockControlLock(
+            finished || phase === 'ended',
+            !!mediaError || !!sessionError,
+            dialogOpen,
+        )) {
+            unlockControls();
+        }
+    }, [controlsLocked, dialogOpen, finished, mediaError, phase, sessionError, unlockControls]);
 
     useEffect(() => {
         if (settingsOpen) {
@@ -2038,12 +2185,14 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         } else {
             msg = 'Something went wrong while playing this file.';
         }
+        if (controlsLockedRef.current) unlockControls();
         setMediaError(msg);
         setBuffering(false);
         setPlaying(false);
     };
 
     const onEnded = () => {
+        if (controlsLockedRef.current) unlockControls();
         setPlaying(false);
         setFinished(true);
         const v = videoRef.current;
@@ -2139,9 +2288,54 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     }, []);
 
     /* ── Remote / keyboard (one stable window listener → always the latest handler) ── */
+    const handleLockedBack = useCallback(() => {
+        const now = Date.now();
+        const previous = lockedBackAtRef.current;
+        if (previous !== null && now - previous <= 2000) {
+            lockedBackAtRef.current = null;
+            closePlayer();
+            return;
+        }
+        lockedBackAtRef.current = now;
+        showLockHandle('Tap the lock to unlock');
+    }, [closePlayer, showLockHandle]);
+
     const onKeyDown = (e: KeyboardEvent) => {
         const k = e.key;
         const code = e.keyCode;
+        const activationKey = lockActivationKeyRef.current;
+        if (activationKey && activationKey.key === k && activationKey.code === code) {
+            e.preventDefault();
+            return;
+        }
+
+        const isBackKey = k === 'Escape' || k === 'Backspace' || k === 'BrowserBack'
+            || k === 'GoBack' || code === 461 || code === 10009;
+        if (phonePlayer && controlsLockedRef.current) {
+            if (isBackKey) {
+                e.preventDefault();
+                handleLockedBack();
+                return;
+            }
+            if (k === 'Tab') {
+                if (!lockHandleVisible) {
+                    e.preventDefault();
+                    showLockHandle();
+                }
+                return;
+            }
+            if (document.activeElement === lockHandleRef.current
+                && (k === 'Enter' || k === ' ' || k === 'OK' || code === 13 || code === 23)) {
+                e.preventDefault();
+                if (!e.repeat) {
+                    lockActivationKeyRef.current = { key: k, code };
+                    unlockControls();
+                }
+                return;
+            }
+            e.preventDefault();
+            return;
+        }
 
         if (k === 'MediaPlayPause' || k === 'MediaTogglePlayPause' || code === 179) { e.preventDefault(); togglePlay(); return; }
         if (k === 'MediaPlay' || code === 415) { e.preventDefault(); playMedia(); return; }
@@ -2159,7 +2353,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         const interactive = nativeActivates || !!t?.closest?.('[role="slider"]');
         const dir = dirOf(k);
 
-        if (k === 'Escape' || k === 'Backspace' || k === 'BrowserBack' || k === 'GoBack' || code === 461 || code === 10009) {
+        if (isBackKey) {
             e.preventDefault();
             handleBack();
             return;
@@ -2297,6 +2491,10 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         const down = (e: KeyboardEvent) => keyHandlerRef.current?.(e);
         const up = (e: KeyboardEvent) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'j' || e.key === 'l') holdRef.current = null;
+            const activationKey = lockActivationKeyRef.current;
+            if (activationKey && (activationKey.key === e.key || activationKey.code === e.keyCode)) {
+                lockActivationKeyRef.current = null;
+            }
         };
         window.addEventListener('keydown', down);
         window.addEventListener('keyup', up);
@@ -2311,11 +2509,13 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         toastTimers.current.forEach(t => clearTimeout(t));
         toastTimers.current.clear();
         if (indicatorFadeTimer.current) clearTimeout(indicatorFadeTimer.current);
+        if (lockHandleTimer.current) clearTimeout(lockHandleTimer.current);
+        if (lockedNoticeTimer.current) clearTimeout(lockedNoticeTimer.current);
     }, []);
 
     const onVideoPointerDown = (e: ReactPointerEvent<HTMLVideoElement>) => {
         const video = videoRef.current;
-        if (!phonePlayer || e.target !== video || !video || !e.isPrimary || e.button !== 0
+        if (!phonePlayer || controlsLockedRef.current || e.target !== video || !video || !e.isPrimary || e.button !== 0
             || !isVideo || !src || phase !== 'ready' || video.readyState < 2
             || buffering || finished || isMinimized || dialogOpen || settingsOpen) return;
 
@@ -2364,7 +2564,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const onSurfacePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
         const gesture = surfaceGestureRef.current;
         if (!gesture || gesture.pointerId !== e.pointerId) return;
-        if (!phonePlayer || !isVideo || !src || phase !== 'ready' || buffering || finished
+        if (controlsLockedRef.current || !phonePlayer || !isVideo || !src || phase !== 'ready' || buffering || finished
             || isMinimized || dialogOpen || settingsOpen) {
             finishSurfaceGesture(e.pointerId, true);
             return;
@@ -2417,6 +2617,61 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const onSurfacePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => finishSurfaceGesture(e.pointerId, true);
     const onSurfacePointerCancel = (e: ReactPointerEvent<HTMLDivElement>) => finishSurfaceGesture(e.pointerId, false);
 
+    const onLockHandlePointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+        if (!controlsLockedRef.current || !e.isPrimary || e.button !== 0) return;
+        clearLockHandleTimer();
+        lockHandleGestureRef.current = {
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+        };
+        setLockHandleDragging(true);
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older WebViews */ }
+    };
+
+    const onLockHandlePointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+        const gesture = lockHandleGestureRef.current;
+        if (!gesture || gesture.pointerId !== e.pointerId) return;
+        const deltaX = e.clientX - gesture.startX;
+        setLockHandleOffset(Math.max(0, Math.min(56, deltaX)));
+        e.preventDefault();
+    };
+
+    const onLockHandlePointerUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
+        const gesture = lockHandleGestureRef.current;
+        if (!gesture || gesture.pointerId !== e.pointerId) return;
+        lockHandleGestureRef.current = null;
+        setLockHandleDragging(false);
+        setLockHandleOffset(0);
+        e.preventDefault();
+
+        const deltaX = e.clientX - gesture.startX;
+        const deltaY = e.clientY - gesture.startY;
+        const classification = classifyLockGesture(deltaX, deltaY);
+        if (classification === 'tap') {
+            unlockControls();
+            return;
+        }
+        if (classification === 'drag' && shouldToggleLockedPlayback(deltaX)) {
+            const video = videoRef.current;
+            if (video) {
+                const action = getLockedPlaybackAction(!video.paused);
+                if (action === 'pause') pauseMedia();
+                else playMedia();
+            }
+        }
+        scheduleLockHandleHide();
+    };
+
+    const onLockHandlePointerCancel = (e: ReactPointerEvent<HTMLButtonElement>) => {
+        const gesture = lockHandleGestureRef.current;
+        if (!gesture || gesture.pointerId !== e.pointerId) return;
+        lockHandleGestureRef.current = null;
+        setLockHandleDragging(false);
+        setLockHandleOffset(0);
+        scheduleLockHandleHide();
+    };
+
     /* ── Root pointer handlers ── */
     const isPhoneVideoSurface = (target: EventTarget | null) =>
         phonePlayer && target instanceof Element && !!target.closest('video');
@@ -2440,6 +2695,10 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         }
     };
     const onVideoSurfaceClick = () => {
+        if (controlsLockedRef.current) {
+            showLockHandle();
+            return;
+        }
         if (suppressSurfaceClickUntilRef.current > Date.now()) {
             suppressSurfaceClickUntilRef.current = 0;
             return;
@@ -2604,8 +2863,49 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                         style={{ opacity: 1 - prefs.brightness }}
                     />
                 )}
-                {gestureIndicator && !isMinimized && (
+                {gestureIndicator && !controlsLocked && !isMinimized && (
                     <GestureIndicator {...gestureIndicator} />
+                )}
+                {controlsLocked && lockedNoticeVisible && !isMinimized && (
+                    <div className="pointer-events-none absolute left-1/2 top-16 z-[140] -translate-x-1/2 rounded-xl border border-white/15 bg-black/55 px-4 py-2 text-sm font-semibold text-white/85 shadow-xl" role="status" aria-live="polite">
+                        Locked
+                    </div>
+                )}
+                {controlsLocked && lockHandleVisible && !isMinimized && (
+                    <div
+                        className={`pointer-events-none absolute left-3 top-1/2 z-50 flex items-center gap-2 ${lockHandleDragging ? 'transition-none' : 'transition-transform duration-150 ease-out'}`}
+                        style={{ transform: `translate(${lockHandleOffset}px, -50%)` }}
+                    >
+                        <button
+                            ref={lockHandleRef}
+                            type="button"
+                            data-hp-lock-handle
+                            aria-label="Unlock controls"
+                            aria-pressed="true"
+                            aria-describedby={lockHandleHint
+                                ? 'hp-lock-playback-description hp-lock-handle-hint'
+                                : 'hp-lock-playback-description'}
+                            onClick={(e) => { if (e.detail === 0) unlockControls(); }}
+                            onPointerDown={onLockHandlePointerDown}
+                            onPointerMove={onLockHandlePointerMove}
+                            onPointerUp={onLockHandlePointerUp}
+                            onPointerCancel={onLockHandlePointerCancel}
+                            className="hp-focus pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85 shadow-lg"
+                            style={{ touchAction: 'none' }}
+                        >
+                            {playing
+                                ? <Lock className="h-4 w-4" aria-hidden="true" />
+                                : <Play className="h-4 w-4" aria-hidden="true" />}
+                            <span id="hp-lock-playback-description" className="sr-only">
+                                {playing ? 'Drag right to pause playback while controls remain locked.' : 'Drag right to resume playback while controls remain locked.'}
+                            </span>
+                        </button>
+                        {lockHandleHint && (
+                            <span id="hp-lock-handle-hint" className="pointer-events-none rounded-full border border-white/15 bg-black/55 px-3 py-2 text-xs font-medium text-white/85 shadow-lg">
+                                {lockHandleHint}
+                            </span>
+                        )}
+                    </div>
                 )}
 
                 {videoMounted && !isVideo && (
@@ -2653,9 +2953,9 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                     </div>
                 )}
 
-                <SeekFlash store={flashStore} />
+                {!controlsLocked && <SeekFlash store={flashStore} />}
 
-                {videoMounted && phase === 'ready' && !playing && !buffering && !finished && !errorMessage && (
+                {videoMounted && phase === 'ready' && !playing && !buffering && !finished && !errorMessage && !controlsLocked && (
                     <div className="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-6 sm:gap-8">
                         <button
                             type="button" aria-label="Back 10 seconds" onClick={seekBack10}
@@ -2679,7 +2979,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                 )}
 
                 {phonePlayer && isVideo && videoMounted && phase === 'ready' && playing
-                    && showCtl && !buffering && !dialogOpen && !finished && !isMinimized && (
+                    && showCtl && !buffering && !dialogOpen && !finished && !isMinimized && !controlsLocked && (
                         <div className="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-6 sm:gap-8">
                             <button
                                 type="button" aria-label="Back 10 seconds" onClick={seekBack10}
@@ -2724,7 +3024,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                     </div>
                 )}
 
-                {resumeToast && !settingsOpen && !dialogOpen && phase === 'ready' && (
+                {resumeToast && !controlsLocked && !settingsOpen && !dialogOpen && phase === 'ready' && (
                     <div
                         data-hp-controls data-hp-toast
                         className="hp-fade-up absolute bottom-32 left-[3.5%] z-40 flex items-center gap-3 rounded-xl border border-[#2dd4bf]/35 bg-[#0e1514]/95 px-4 py-2.5 shadow-xl"
@@ -2745,7 +3045,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
 
                 {/* Controls overlay. Click-through by design (see PLAYER_CSS [data-hp-wrap]): only real buttons and
                     sliders capture the pointer; other taps reach the device-specific <video> surface handler. */}
-                {videoMounted && phase === 'ready' && !dialogOpen && !finished && (
+                {videoMounted && phase === 'ready' && !dialogOpen && !finished && !controlsLocked && (
                     <div
                         ref={ctlWrapRef}
                         data-hp-controls data-hp-wrap data-on={showCtl ? '1' : '0'}
@@ -2847,6 +3147,17 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                                 </div>
                             </div>
                         </div>
+                        {phonePlayer && !isMinimized && (
+                            <button
+                                type="button"
+                                aria-label="Lock controls"
+                                title="Lock controls"
+                                onClick={lockControls}
+                                className="hp-focus absolute left-3 top-1/2 z-40 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85"
+                            >
+                                <Lock className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                        )}
                         {!phonePlayer && (
                             <>
                                 <div
@@ -2977,7 +3288,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             )}
 
             <div className="pointer-events-none absolute left-1/2 top-16 z-[140] flex -translate-x-1/2 flex-col items-center gap-2" role="status" aria-live="polite">
-                {toasts.map(t => (
+                {!controlsLocked && toasts.map(t => (
                     <div
                         key={t.id}
                         className={`hp-fade-up rounded-xl border px-4 py-2 text-sm font-semibold shadow-xl ${
