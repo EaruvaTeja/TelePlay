@@ -5,7 +5,7 @@
 Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one branch = one Copilot prompt = ONE final commit = one owner-merged PR.
 
 ## Constraints & Rules (apply to every task)
-* **Frozen:** `web/src/components/MediaPlayer.tsx` byte-identical for T12.4 onward; the one-time T12.3 owner-authorized SPEEDS exception is closed. Preserve its imports (`TelegramFile`, `formatDuration`, `useUpdateProgress`, `useFile`, `api`, `useAppStore`) and keys `hearth_player_prefs`, `hearth_device_id`.
+* **Frozen:** `web/src/components/MediaPlayer.tsx` byte-identical for T12.4 onward; the one-time T12.3 owner-authorized SPEEDS exception is closed. Two additional owner-authorized mobile-only exceptions are T12.86 (auto-landscape) and T12.87 (tap=controls, center=play/pause); each freezes independently after implementation, and TV/PC behavior remains byte-identical in behavior. Preserve its imports (`TelegramFile`, `formatDuration`, `useUpdateProgress`, `useFile`, `api`, `useAppStore`) and keys `hearth_player_prefs`, `hearth_device_id`.
 * **Non-goals:** Android, folders, search, multi-select, rename/move, QR, public links, transcoding, Redis, Docker, SQLite, helper bots, Alembic (today), broad dependency upgrades.
 * **Sanitizer notice:** filename sanitizer and `escape_like` are CORRECT — never alter or "repair".
 * One Uvicorn worker; Python 3.13 (Debian 13 native; decision in HANDOFF); Node 20; `npm ci`; pinned `requirements.txt`.
@@ -24,6 +24,23 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | 4 | T0 | Owner (agent assists) | Verified backups BEFORE first boot | `T0: Backups verified — evidence recorded` |
 | 5 | T15 | Owner (agent assists) | VPS+Pages deploy + acceptance evidence | `T15: Real-World Hardware Acceptance — evidence recorded` |
 | 6 | T16 | Owner (agent assists) | GO decision + 72h observation log | `T16: Launch & 72-hour observation — GO recorded` |
+
+### 2026-11-20 post-incident execution map (T12.81–T12.92)
+
+| Task | Scope |
+|---|---|
+| T12.81 | Incident provenance and post-incident baseline freeze. |
+| T12.82 | Re-baseline, A-item ownership, and execution-state reconciliation. |
+| T12.83 | Re-opened F-01 stream identity: bind token file/device/owner consistently. |
+| T12.84 | Re-opened F-02 source of truth: enforce `family_members` for family membership. |
+| T12.85 | Re-opened F-02 verify-code: remove static-`AUTH_USERS`/mint-admin bypass. |
+| T12.86 | OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape. |
+| T12.87 | OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls/center play-pause. |
+| T12.88 | Mobile/TV/PC parity and final `MediaPlayer.tsx` freeze. |
+| T12.89 | Post-incident auth/origin closure; A-item tracking and security gates. |
+| T12.90 | GitHub origin/live `deploy-T12.7` provenance and release consistency. |
+| T12.91 | Stale bundle and VPS disk/RAM recovery; incident A-item tracking. |
+| T12.92 | Final freeze plus T0-R, T15-R, and T16-R gate reruns before handoff. |
 
 ---
 
@@ -248,6 +265,67 @@ Do not change other application code, dependencies, deploy files, or secrets. T0
 
 **Gate:** full backend pytest, `compileall -q app`, `pip check`; `git diff --stat` limited to the four authorized files. Actual Telegram connectivity on the target IPv6-only VPS remains a post-merge owner verification.
 **Commit:** `T12.5: Force IPv6 for Pyrogram Client on IPv6-only VPS — gate passed`
+
+## T12.80 — Post-incident docs re-baseline
+
+**Branch:** `hearth/t12.80` from latest `main`. **Files (exact):**
+* `HANDOFF.md`
+* `PLAN.md`
+* `PROGRESS.md`
+* `AUDIT_REPORT.md`
+
+Record the T12.6/T12.7 incident outcome, re-open F-01/F-02 in the verified baseline, authorize only T12.86/T12.87 mobile MediaPlayer exceptions, register T12.81–T12.92, set Current Task to T12.81, and add fresh gate evidence. No application, test, dependency, deploy, or package file may change.
+
+**Gate:** backend `.venv\Scripts\python -m pytest -q` · `.venv\Scripts\python -m compileall -q app` · `.venv\Scripts\pip check`; frontend `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `dist/_redirects`; `git diff --stat -- web/src/components/MediaPlayer.tsx` empty; exactly the four authorized documentation files changed.
+**Commit:** `T12.80: Post-incident docs re-baseline, F-01/F-02 re-opened, mobile exceptions authorized — gate passed`
+
+## T12.81 — Incident provenance and post-incident baseline freeze
+
+**Scope:** document the 2026-11-20 incident outcome, live SHA `c0aa30f28408add60574de9f9385912131b5524a` (`deploy-T12.7`), unconditional bot lifespan import, GitHub origin state, WARP SOCKS5 `127.0.0.1:40000`, stale `7629f0a` bundle, disk/RAM readings, and verification boundaries. This task creates no deployment or application change.
+
+## T12.82 — Re-baseline and A-item execution ownership
+
+**Scope:** reconcile the incident findings with the existing master execution order, freeze the post-incident release-state assumptions, and register A1/A2/A4/A5/A6/A7 as tracked rather than silently resolved. T12.89 and T12.91 own the implementation/recovery gates; all evidence remains labeled CONFIRMED, VERIFY ON VPS, or NOT VERIFIED.
+
+## T12.83 — Family stream identity repair: file/device/owner binding
+
+**Scope:** reopen F-01 only and repair stream-token identity so `create_stream_token` carries the required family version and `_auth_stream` resolves the same owner/device identity as `/playback/start`. Preserve auth-before-cache, the household-wide two-stream cap, guest `gv`, and existing exports.
+
+## T12.84 — `family_members` membership source repair
+
+**Scope:** reopen F-02 only and make family membership the single source of truth for media and family authorization. Static `AUTH_USERS` may authorize owner operations only where deliberately specified; it must not manufacture family membership or grant media identity.
+
+## T12.85 — Verify-code role and membership hardening
+
+**Scope:** remove the verify-code minting path that grants `role=admin` to an existing user without membership validation. Existing family members must receive the intended family role only after a live `family_members` check; unknown users remain fail-closed.
+
+## T12.86 — OWNER-AUTHORIZED MediaPlayer exception #2: mobile auto-landscape
+
+**Scope:** implement mobile-only automatic landscape behavior after a mobile device is confirmed. TV/PC behavior must remain byte-identical in behavior; preserve every `MediaPlayer.tsx` export and both `hearth_player_prefs` and `hearth_device_id` (`DEVICE_ID_KEY`). Freeze the player again immediately after this task.
+
+## T12.87 — OWNER-AUTHORIZED MediaPlayer exception #3: mobile tap controls
+
+**Scope:** implement mobile-only player tap-to-show-controls and center-button play/pause behavior. TV/PC behavior must remain byte-identical in behavior; preserve every `MediaPlayer.tsx` export and both localStorage keys. Freeze the player again immediately after this task.
+
+## T12.88 — Mobile exception parity and final player freeze
+
+**Scope:** verify both owner-authorized mobile exceptions independently of TV/PC behavior, confirm no export or localStorage-key change, and record `git diff --stat -- web/src/components/MediaPlayer.tsx` evidence for the final freeze. T12.88 is the gate for no further `MediaPlayer.tsx` changes.
+
+## T12.89 — Post-incident auth and origin incident closure
+
+**Scope:** track and close the incident items assigned here, including the family media identity/membership corrections for F-01/F-02 and incident A1/A2/A4/A5/A6/A7 work ownership where applicable. Re-run security tests, preserve all security invariants, and do not weaken or delete existing tests.
+
+## T12.90 — GitHub origin and live deployment provenance
+
+**Scope:** enforce GitHub as the deployment source of truth, re-point remaining release documentation to the live `deploy-T12.7` provenance, and verify the final tested SHA rather than the stale bundle. No application/dependency behavior change is allowed unless separately authorized.
+
+## T12.91 — Stale bundle and VPS resource recovery
+
+**Scope:** track and remediate the stale `/opt/hearth/hearth-v1.0-rc.bundle` at SHA `7629f0a`, disk 75% (3.0/4.0 GB), and RAM 210/512 MB. Record owner/VPs actions and evidence for the incident items assigned to this task, including bundle quarantine/removal or replacement and resource recovery.
+
+## T12.92 — Final freeze, gate rerun, and handoff
+
+**Scope:** after T12.81–T12.91, freeze the release and execute the final baseline: T0-R (backups reachability/recovery gate), T15-R (VPS/hardware acceptance gate), and T16-R (launch/72-hour readiness gate). Refresh audit evidence, update final SHA/release status, and prepare handoff for owner merge only.
 
 ## T0 — Verified Backups (OWNER, BEFORE first production boot; agent may assist)
 
