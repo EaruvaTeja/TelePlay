@@ -95,12 +95,12 @@ export function getLockedDragProgress(deltaX: number): number {
 
 export function getLockNotice(action: LockNoticeAction): { title: string; subtitle: string } {
     if (action === 'paused') {
-        return { title: 'Paused', subtitle: 'Still locked. Drag right to play.' };
+        return { title: 'Paused', subtitle: '' };
     }
     if (action === 'playing') {
-        return { title: 'Playing', subtitle: 'Still locked. Drag right to pause.' };
+        return { title: 'Playing', subtitle: '' };
     }
-    return { title: 'Locked', subtitle: 'Hold lock 1s to unlock.' };
+    return { title: 'Locked', subtitle: 'Hold lock to unlock' };
 }
 
 export function getLockedPlaybackAction(isPlaying: boolean): 'pause' | 'play' {

@@ -2361,7 +2361,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             return;
         }
         lockedBackAtRef.current = now;
-        showLockHandle('Hold lock 1s to unlock');
+        showLockHandle('Hold lock to unlock');
     }, [closePlayer, showLockHandle]);
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2749,7 +2749,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         if (classification === 'drag' && shouldToggleLockedPlayback(deltaX)) {
             const video = videoRef.current;
             if (video) {
-                const action = getLockedPlaybackAction(!video.paused);
+                const action = getLockedPlaybackAction(playing);
                 if (action === 'pause') pauseMedia();
                 else playMedia();
                 showLockedNotice(action === 'pause' ? 'paused' : 'playing');
@@ -2819,6 +2819,8 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const volEff = prefs.muted ? 0 : prefs.volume;
     const VolIcon = prefs.muted || volEff === 0 ? VolumeX : volEff < 0.5 ? Volume1 : Volume2;
     const lockedNoticeCopy = getLockNotice(lockedNoticeAction);
+    const lockedPlaybackAction = getLockedPlaybackAction(playing);
+    const lockHandleRightDragging = lockHandleDragging && lockHandleDragProgress > 0;
     const AspectIcon = ASPECT_META[prefs.aspect].icon;
     const preparingStream = phase === 'starting' || (phase === 'ready' && !src);
     const errorMessage = mediaError ?? sessionError;
@@ -2971,9 +2973,13 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                     <GestureIndicator {...gestureIndicator} />
                 )}
                 {controlsLocked && lockedNoticeVisible && !isMinimized && (
-                    <div className="pointer-events-none absolute left-1/2 top-16 z-[140] -translate-x-1/2 rounded-xl border border-white/15 bg-black/55 px-4 py-2 text-center text-sm font-semibold leading-tight text-white/85 shadow-xl" role="status" aria-live="polite">
+                    <div className="pointer-events-none absolute left-1/2 top-16 z-[140] -translate-x-1/2 rounded-xl border border-white/15 bg-black/55 px-4 py-2 text-center text-[13px] font-semibold leading-tight text-white/85 shadow-xl" role="status" aria-live="polite">
                         <span className="block">{lockedNoticeCopy.title}</span>
-                        <span className="mt-1 block text-xs font-medium text-white/70">{lockedNoticeCopy.subtitle}</span>
+                        {lockedNoticeCopy.subtitle && (
+                            <span className="mt-1 block text-[11px] font-medium text-white/70">
+                                {lockedNoticeCopy.subtitle}
+                            </span>
+                        )}
                     </div>
                 )}
                 {controlsLocked && lockHandleVisible && !isMinimized && (
@@ -2997,7 +3003,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                                 data-hp-lock-handle
                                 aria-label="Unlock controls"
                                 aria-pressed="true"
-                                aria-describedby={`hp-lock-unlock-hint hp-lock-playback-description hp-lock-drag-hint${lockHandleHint ? ' hp-lock-handle-hint' : ''}`}
+                                aria-describedby={`hp-lock-unlock-hint hp-lock-playback-description${lockHandleHint ? ' hp-lock-handle-hint' : ''}`}
                                 onClick={(e) => { if (e.detail === 0) unlockControls(); }}
                                 onPointerDown={onLockHandlePointerDown}
                                 onPointerMove={onLockHandlePointerMove}
@@ -3015,9 +3021,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                                         : undefined,
                                 }}
                             >
-                                {playing
-                                    ? <Lock className="h-4 w-4" aria-hidden="true" />
-                                    : <Play className="h-4 w-4" aria-hidden="true" />}
+                                <Lock className="h-4 w-4" aria-hidden="true" />
                                 <svg
                                     aria-hidden="true"
                                     className="pointer-events-none absolute -inset-1 h-12 w-12"
@@ -3037,20 +3041,31 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                                     />
                                 </svg>
                             </button>
-                            <ChevronRight
-                                aria-hidden="true"
-                                className={`h-4 w-4 text-white/70 ${lockHandleThresholdReached ? 'hp-lock-drag-confirm' : lockHandleDragging ? 'transition-transform duration-75' : 'hp-lock-arrow-cue'}`}
-                                style={lockHandleDragging && !lockHandleThresholdReached
-                                    ? {
-                                        opacity: 0.45 + lockHandleDragProgress * 0.5,
-                                        transform: `translateX(${lockHandleDragProgress * 5}px)`,
-                                    }
-                                    : undefined}
-                            />
+                            {lockHandleRightDragging ? (
+                                <span aria-hidden="true" className="relative block h-4 w-7">
+                                    <span
+                                        className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-white/70 transition-opacity duration-75"
+                                        style={{ opacity: 0.2 + lockHandleDragProgress * 0.65 }}
+                                    />
+                                    <span
+                                        className="absolute left-0 top-1/2 transition-transform duration-75 ease-out"
+                                        style={{ transform: `translate(${lockHandleDragProgress * 22}px, -50%)` }}
+                                    >
+                                        <span className={`block h-1.5 w-1.5 rounded-full bg-white/90 shadow-sm ${lockHandleThresholdReached ? 'hp-lock-drag-confirm' : ''}`} />
+                                    </span>
+                                </span>
+                            ) : (
+                                <>
+                                    <ChevronRight
+                                        aria-hidden="true"
+                                        className="hp-lock-arrow-cue h-4 w-4 text-white/70"
+                                    />
+                                    {lockedPlaybackAction === 'pause'
+                                        ? <Pause className="h-3.5 w-3.5 text-white/75" aria-hidden="true" />
+                                        : <Play className="h-3.5 w-3.5 text-white/75" aria-hidden="true" />}
+                                </>
+                            )}
                         </div>
-                        <span id="hp-lock-drag-hint" className="pointer-events-none ml-1 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[11px] font-medium text-white/60">
-                            Drag right to pause/play
-                        </span>
                         {lockHandleHint && (
                             <span id="hp-lock-handle-hint" className="pointer-events-none ml-1 rounded-full border border-white/15 bg-black/55 px-3 py-2 text-xs font-medium text-white/85 shadow-lg">
                                 {lockHandleHint}
@@ -3060,7 +3075,9 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                             Touch and hold the lock for one second to unlock. Keyboard activation also unlocks controls.
                         </span>
                         <span id="hp-lock-playback-description" className="sr-only">
-                            {playing ? 'Drag right to pause playback while controls remain locked.' : 'Drag right to resume playback while controls remain locked.'}
+                            {lockedPlaybackAction === 'pause'
+                                ? 'Drag right to pause playback while controls remain locked.'
+                                : 'Drag right to resume playback while controls remain locked.'}
                         </span>
                     </div>
                 )}

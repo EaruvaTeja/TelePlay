@@ -413,7 +413,7 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T13 phase — owner-authorized UX and household count tasks
 
-The bare **T13 Deployment Kit & Runbooks** task is already complete. This phase consists of T13.1–T13.11 sub-tasks plus the owner-authorized T13.8.1 follow-up. Cloudflare Pages publishes on merge to `main`, while the VPS remains on `deploy-T12.90.2-rc` until the owner deploys; every web change must remain compatible with the old server. The owner intends to merge T13.2–T13.8 in one sitting because the temporary removal of the bottom-bar volume controls precedes their replacements. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
+The bare **T13 Deployment Kit & Runbooks** task is already complete. This phase consists of T13.1–T13.11 sub-tasks plus the owner-authorized T13.8.1 and T13.8.2 follow-ups. Cloudflare Pages publishes on merge to `main`, while the VPS remains on `deploy-T12.90.2-rc` until the owner deploys; every web change must remain compatible with the old server. The owner intends to merge T13.2–T13.8 in one sitting because the temporary removal of the bottom-bar volume controls precedes their replacements. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
 
 **T13 guardrails:** no new dependencies or `backdrop-filter`; preserve Chrome 53/old-Tizen compatibility and the existing old-server contract. Do not change the playback limiter, auth-before-cache/stream-token/revocation logic, bot, database schema, deployment kit, protected API/store exports, or `hearth_player_prefs`/`hearth_device_id` keys. `MediaPlayer.tsx` may change only inside the active task's Exception #5 sub-scope. Do not push to main, create a tag, or create/merge a PR.
 
@@ -548,6 +548,20 @@ Use pointer capture and `touch-action: none` on the handle; ignore non-primary p
 **Tests and gate:** Extend the pure `mobilePlayer.test.ts` cases for one-second hold progress/threshold, right-drag progress, and lock/action notice copy. Run the full web test suite, TypeScript check, lint, production build, and confirm `dist/_redirects`. Physical phone touch and visual acceptance remain **VERIFY ON DEVICE**.
 
 **Commit:** `T13.8.1: Phone lock UX polish — hold-to-unlock and drag feedback — gate passed`
+
+### T13.8.2 — OWNER-AUTHORIZED lock playback indicator and notice polish
+
+**Sub-scope:** Exception #5.7.2, limited to phone lock presentation. **Files:** `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, existing `hp-lock-*` styles in `web/src/index.css` only if needed, and `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, `AUDIT_REPORT.md`. Leave Current Task at T13.10.
+
+**UI:** Keep the locked handle's Lock icon in both playback states. Beside it, show a small Pause icon while synchronized playback state is playing and a Play icon while paused, with the existing `getLockedPlaybackAction()` and `playing` state kept consistent. During an actual positive horizontal drag, hide the arrow and state icon and show a small dot moving along a subtle track; use existing `getLockedDragProgress()` so it reaches the track end at the unchanged 32px toggle threshold. A stationary hold, tap-sized movement, vertical/invalid movement, and left drag retain the idle icon. Preserve current handle travel, gesture classification, pointer capture/cancel/lost-capture safeguards, and threshold feedback. Reuse `hp-lock-drag-confirm`; honor reduced-motion styling.
+
+**Copy/accessibility:** `getLockNotice('locked')` displays exactly “Locked” / “Hold lock to unlock”; Paused/Playing notices contain no drag instructions. Slightly reduce notice text to about 13px/11px. Change the Back hint to “Hold lock to unlock.” Remove visible “Drag right to pause/play” text and its `aria-describedby` target, retaining screen-reader-only gesture, hold, and keyboard descriptions. Do not change the 1-second hold or keyboard unlock behavior.
+
+**Tests and acceptance:** Update notice-copy and playback-action assertions without deleting or weakening tests. Verify icon/action mapping, dot-progress boundaries, unchanged hold/drag thresholds, cancellation/reset behavior by source review, no stale visible drag strings or invalid accessibility IDs, phone-only rendering, and no TV/PC/tablet changes. Manual touch/layout checks are **VERIFY ON DEVICE**.
+
+**Gate:** Before editing, run `npm ci`, full `npx vitest run`, and focused `npx vitest run src/lib/__tests__/mobilePlayer.test.ts` to record the actual baseline. After editing run those same test commands, `npm run typecheck`, `npm run lint`, `npm run build`, verify `dist/_redirects`, and `git diff --check`. Confirm no test deletion, dependency/package changes, backend/API/storage changes, or unrelated player hunks.
+
+**Commit:** `T13.8.2: Mobile lock UX indicators and unlock copy refinement — gate passed`
 
 ### T13.9 — Issue 6a: household playback count endpoint
 
