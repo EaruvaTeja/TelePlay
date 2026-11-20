@@ -333,6 +333,14 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 **Scope:** implement mobile-only automatic landscape behavior after a mobile device is confirmed. TV/PC behavior must remain byte-identical in behavior; preserve every `MediaPlayer.tsx` export and both `hearth_player_prefs` and `hearth_device_id` (`DEVICE_ID_KEY`). Freeze the player again immediately after this task.
 
+**Files:** `web/src/components/MediaPlayer.tsx`, new `web/src/lib/mobilePlayer.ts`, new `web/src/lib/__tests__/mobilePlayer.test.ts`, `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `web/src/index.css` may change only if strictly required.
+
+**Implementation:** phone video playback only; attempt native fullscreen/orientation lock on first play, use stage-scoped CSS pseudo-landscape only when native lock is unavailable in portrait, provide a toggle and one-time hint, and release orientation/fullscreen plus clear pseudo-landscape when minimizing or closing. Audio, tablet, TV, and computer behavior stay unchanged. Preserve all exports, player preferences/device-ID keys, TV key map, scrubber, settings, and session/prewarm behavior.
+
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build on Node 20; confirm `dist/_redirects`; preserve all existing backend/security tests. Record Android Chrome native-lock, iPhone Safari CSS-fallback, and minimize/close portrait-restoration checks as **VERIFY ON DEVICE**. Freeze `MediaPlayer.tsx` immediately afterward.
+
+**Commit:** `T12.86: Mobile-only auto-landscape playback (owner-authorized exception #2) — gate passed`
+
 ## T12.87 — OWNER-AUTHORIZED MediaPlayer exception #3: mobile tap controls
 
 **Scope:** implement mobile-only player tap-to-show-controls and center-button play/pause behavior. TV/PC behavior must remain byte-identical in behavior; preserve every `MediaPlayer.tsx` export and both localStorage keys. Freeze the player again immediately after this task.

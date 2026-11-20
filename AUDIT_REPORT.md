@@ -397,3 +397,21 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - MediaPlayer: `git diff --stat -- web/src/components/MediaPlayer.tsx` — **empty**.
 - **CONFIRMED:** all existing backend tests passed; no security test was deleted or weakened. Only the six authorized task files are changed.
 - **VERIFY ON VPS:** live active-member add/remove and verify-code behavior; DB-wake/server-status responses under actual DB sleep/outage; logout-all/user_remove invalidation of already-issued stream URLs. No VPS or production database request was made for this task.
+
+## T12.86 — Mobile-only auto-landscape
+
+### Implementation and freeze — CONFIRMED
+
+- `web/src/lib/mobilePlayer.ts` adds phone detection, video/portrait eligibility, guarded native fullscreen/orientation lock and unlock, and the CSS fallback eligibility helper.
+- `web/src/components/MediaPlayer.tsx` adds phone-gated play-gesture lock attempts, portrait/resize tracking, stage-only pseudo-landscape styling, a fallback toggle and one-time hint, and landscape cleanup on minimize/close. Minimizing also clears fallback rotation state.
+- Exact changed hunks: imports for device/mobile helpers; stage-scoped pseudo-landscape CSS and portrait detection; phone-only state/refs and orientation/hint lifecycle; play transport lock/release helpers; close/minimize cleanup; stage ref/data attributes; fallback toggle and hint rendering.
+- `web/src/lib/__tests__/mobilePlayer.test.ts` covers phone/TV/computer/tablet × portrait/landscape × video/audio, minimized/enabled/lock-supported cases, and native lock/unlock ordering and failures.
+- **CONFIRMED:** no changes to `web/src/index.css`, exports, localStorage keys (`hearth_player_prefs`, `hearth_device_id`), TV key map, scrubber, settings, or session/prewarm logic. Non-phone branches retain existing behavior. Freeze resumes after T12.86; T12.87 requires its separate explicit authorization.
+
+### Fresh T12.86 gate evidence — CONFIRMED
+
+- Date: 2026-11-20; branch: `hearth/t12.86`; base: latest `main` at `56735512c1750e0ec8d7823ecfaa9bcd2c4228ff`.
+- Python 3.13.0; backend `.venv\Scripts\python -m pytest -q`: **190 passed, 61 warnings**; `.venv\Scripts\python -m compileall -q app`: **PASS**; `.venv\Scripts\pip check`: **PASS; no broken requirements**.
+- Node **20.19.5** / npm **10.8.2**; `npm ci`: **PASS** (447 packages; 24 dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical; no dependency changes); `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **3 files, 166 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**.
+- **CONFIRMED:** all 190 existing backend tests passed; the new frontend helper tests passed; no security tests were weakened or deleted. `git diff --check`: **PASS**.
+- **VERIFY ON DEVICE:** Android Chrome native landscape lock; iPhone Safari CSS pseudo-landscape fallback/toggle; minimizing and closing restore portrait. No physical-device test was performed.
