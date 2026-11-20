@@ -30,7 +30,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | Task | Scope |
 |---|---|
 | T12.81 | Enforce family stream-token revocation with version claims and User.id identity. |
-| T12.82 | Re-baseline, A-item ownership, and execution-state reconciliation. |
+| T12.82 | Make `family_members.active` the live bot/API family authorization authority. |
 | T12.83 | Re-opened F-01 stream identity: bind token file/device/owner consistently. |
 | T12.84 | Re-opened F-02 source of truth: enforce `family_members` for family membership. |
 | T12.85 | Re-opened F-02 verify-code: remove static-`AUTH_USERS`/mint-admin bypass. |
@@ -290,9 +290,15 @@ Add keyword-only optional `ver` to stream tokens and include it when provided. F
 
 The existing cache-auth test file was initially excluded by its byte-identical note. The owner explicitly approved updating only its valid-family-token fixture because the old fixture minted an admin token without the now-required claims; its 206, cached body, and cache-header assertions remain intact.
 
-## T12.82 — Re-baseline and A-item execution ownership
+## T12.82 — `family_members.active` authorization authority
 
-**Scope:** reconcile the incident findings with the existing master execution order, freeze the post-incident release-state assumptions, and register A1/A2/A4/A5/A6/A7 as tracked rather than silently resolved. T12.89 and T12.91 own the implementation/recovery gates; all evidence remains labeled CONFIRMED, VERIFY ON VPS, or NOT VERIFIED.
+**Branch:** `hearth/t12.82` from latest `main`. **Files:** `backend/app/bot.py`, `backend/app/routers/auth.py`, `backend/tests/test_bot_access.py`, `backend/tests/test_bot_db_wake.py` (extend only), `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+Add uncached `is_active_member(telegram_id)` and make the private-message authorization middleware and guarded commands use active database membership. Fall back to `settings.auth_users` only for `_DB_CONNECTIVITY_ERRORS`, so the bootstrap owner can reach the established DB-wake response. Reconcile existing and new User roles from membership; guard uploads before forwarding and prevent inactive users from minting login codes. In `verify-code`, validate live active membership for every bound ID, including existing User rows, and set `role="admin"` only for active members. Preserve the atomic one-time code consume and all owner-only and callback authorization checks.
+
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build; confirm `dist/_redirects`. Add focused active/inactive membership, verify-code, and DB-wake tests. Never weaken or delete existing security tests; do not upgrade dependencies.
+**VERIFY ON VPS:** live DB membership add/remove behavior, including old login-code rejection and bootstrap-owner DB-wake behavior.
+**Commit:** `T12.82: family_members.active is the live bot/API authorization authority — gate passed`
 
 ## T12.83 — Family stream identity repair: file/device/owner binding
 

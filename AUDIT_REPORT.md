@@ -314,3 +314,24 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - npm reported 24 dependency-tree vulnerabilities (1 low, 6 moderate, 15 high, 2 critical); no dependency upgrades or force-fixes were performed.
 - **CONFIRMED:** no new application behavior beyond family stream revocation; no security test was deleted or weakened. The changed cache fixture remains a signed authorized family token with the original positive assertions.
 - **VERIFY ON VPS:** live `/auth/logout-all` and `/user_remove` invalidation of already-issued URLs, including a warm proxy/client cache. No VPS request was made for this task.
+
+## T12.82 — `family_members.active` authorization authority
+
+### Authorization behavior
+
+- **CONFIRMED:** `is_active_member()` queries `FamilyMember.active` on each call; the private-message gate permits active DB members even when absent from `AUTH_USERS` and stops inactive/missing users. Static `AUTH_USERS` fallback is restricted to `_DB_CONNECTIVITY_ERRORS`.
+- **CONFIRMED:** existing and newly created bot `User` roles are reconciled from active membership. `require_active_member()` guards uploads before forwarding, `/login`, `/web`, `/myfiles`, and `/file`; web-code creation independently checks membership before inserting a `LoginCode`.
+- **CONFIRMED:** `/auth/verify-code` validates active membership through `_get_or_create_family_user()` for both new and existing `User` rows, rejects inactive/missing members with HTTP 400, and promotes only active members to `admin`. Atomic one-time code consumption is preserved.
+- **CONFIRMED:** tests cover an active DB member absent from static `AUTH_USERS` using `/start`, upload, and verify-code; an inactive existing user cannot upload, mint bot login codes, or verify a code; DB-connectivity fallback admits the bootstrap owner and the subsequent `/start` failure displays the established wake message.
+- **CONFIRMED:** existing callback authorization assertions and owner-only command checks remain intact; no security test was deleted or weakened.
+
+### Fresh T12.82 gate evidence
+
+- **CONFIRMED:** Date 2026-11-20; branch `hearth/t12.82`; base latest `main` at `47071de`.
+- **CONFIRMED:** Python 3.13.0; `.venv\Scripts\python -m pytest -q` — **162 passed, 61 warnings**; `.venv\Scripts\python -m compileall -q app` — **PASS**; `.venv\Scripts\python -m pip check` — **PASS, no broken requirements**.
+- **CONFIRMED:** targeted `.venv\Scripts\python -m pytest -q tests\test_bot_access.py tests\test_bot_db_wake.py` — **22 passed, 8 warnings**.
+- **CONFIRMED:** Node 20.19.5 / npm 10.8.2; `npm ci` — **PASS** (447 packages); `npm run lint` — **PASS**; `npm run typecheck` — **PASS**; `npm test` — **2 files, 14 tests passed**; `npm run build` — **PASS**; `dist/_redirects` — **present**.
+- **CONFIRMED:** `npm ci` reported 24 dependency-tree advisories (1 low, 6 moderate, 15 high, 2 critical). No dependency upgrade or manifest change was made.
+- **CONFIRMED:** implementation and test changes are limited to the requested bot/API authorization paths and named tests; docs record the task and next task.
+- **VERIFY ON VPS:** confirm live membership addition/removal immediately affects bot commands and verify-code, and that DB sleep permits bootstrap-owner recovery with the wake message.
+- **NOT VERIFIED:** no live VPS request or production database interaction was performed for this task.

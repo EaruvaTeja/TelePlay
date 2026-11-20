@@ -161,6 +161,33 @@ async def _get_family_member(db: AsyncSession, telegram_id: int):
     return result.scalar_one_or_none()
 
 
+async def is_active_member(telegram_id: int) -> bool:
+    """Return whether the Telegram ID currently has active family membership."""
+    async with async_session() as db:
+        member = await _get_family_member(db, telegram_id)
+        return member is not None and bool(member.active)
+
+
+async def require_active_member(
+    message: Message, telegram_id: int | None = None
+) -> bool:
+    """Allow active members, with the static bootstrap list only during DB outages."""
+    sender_id = telegram_id if telegram_id is not None else message.from_user.id
+    try:
+        active = await is_active_member(sender_id)
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Family membership lookup failed (%s)", type(exc).__name__)
+        active = sender_id in settings.auth_users
+
+    if not active:
+        await message.reply(
+            "🚫 **Access Restricted**\n\n"
+            "Sorry, this bot is limited to active family members only.\n"
+            f"Your Telegram ID: `{sender_id}`"
+        )
+    return active
+
+
 async def get_or_create_user(
     telegram_id: int,
     username: str = None,
@@ -176,9 +203,9 @@ async def get_or_create_user(
     async with async_session() as db:
         result = await db.execute(select(User).where(User.telegram_id == telegram_id))
         user = result.scalar_one_or_none()
+        member = await _get_family_member(db, telegram_id)
+        role = "admin" if (member is not None and member.active) else "guest"
         if not user:
-            member = await _get_family_member(db, telegram_id)
-            role = "admin" if (member is not None and member.active) else "guest"
             user = User(
                 telegram_id=telegram_id,
                 username=username,
@@ -189,12 +216,15 @@ async def get_or_create_user(
             db.add(user)
             await db.commit()
             await db.refresh(user)
+        elif user.role != role:
+            user.role = role
+            await db.commit()
         return user
 
 
 async def get_web_app_button(
-    telegram_id: int, text: str = "🌐 Open Web"
-) -> InlineKeyboardButton:
+    telegram_id: int, text: str = "🌐 Open Web", *, target: Message
+) -> InlineKeyboardButton | None:
     """
     Generate a one-time code bound to this Telegram user and return a WebAppInfo button.
 
@@ -204,14 +234,25 @@ async def get_web_app_button(
     code = "".join(secrets.choice("0123456789") for _ in range(8))
 
     async with async_session() as db:
-        db.add(
-            LoginCode(
-                code=code,
-                telegram_id=telegram_id,
-                expires_at=datetime.utcnow() + timedelta(minutes=2),
+        member = await _get_family_member(db, telegram_id)
+        active = member is not None and member.active
+        if active:
+            db.add(
+                LoginCode(
+                    code=code,
+                    telegram_id=telegram_id,
+                    expires_at=datetime.utcnow() + timedelta(minutes=2),
+                )
             )
+            await db.commit()
+
+    if not active:
+        await target.reply(
+            "🚫 **Access Restricted**\n\n"
+            "Sorry, this bot is limited to active family members only.\n"
+            f"Your Telegram ID: `{telegram_id}`"
         )
-        await db.commit()
+        return None
 
     web_url = f"{settings.web_base_url}/auth?code={code}"
 
@@ -231,25 +272,23 @@ async def get_web_app_button(
 @tg_client.on_message(filters.private, group=-2)
 async def check_auth(client, message: Message):
     """
-    Block unauthorized users from using the bot.
+    Block users without active family membership before any other handler.
 
-    This runs before all other handlers (group=-2). If AUTH_USERS is empty,
-    the bot rejects everyone (fail closed for security). If the user is not
-    in AUTH_USERS, the bot replies with an error and stops processing.
+    The static list is used only as a bootstrap fallback while the DB is down.
     """
-    auth_users = settings.auth_users
-    if not auth_users:
-        if message.text and message.text.startswith("/start"):
-            await message.reply("🚫 Access Denied. No users configured.")
-        message.stop_propagation()
-        return
+    sender_id = message.from_user.id
+    try:
+        active = await is_active_member(sender_id)
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Bot authorization database failure (%s)", type(exc).__name__)
+        active = sender_id in settings.auth_users
 
-    if message.from_user.id not in auth_users:
+    if not active:
         if message.text and message.text.startswith("/start"):
             await message.reply(
                 "🚫 **Access Restricted**\n\n"
                 "Sorry, this bot is limited to authorized users only.\n"
-                f"Your Telegram ID: `{message.from_user.id}`"
+                f"Your Telegram ID: `{sender_id}`"
             )
         message.stop_propagation()
 
@@ -275,28 +314,44 @@ async def start_command(client, message: Message):
 
     if len(message.command) > 1:
         code_input = message.command[1].strip().upper()
-        async with async_session() as db:
-            result = await db.execute(
-                select(LoginCode).where(LoginCode.code == code_input)
-            )
-            login_code = result.scalar_one_or_none()
-            if login_code:
-                if (
-                    login_code.expires_at > datetime.utcnow()
-                    and not login_code.telegram_id
-                ):
-                    login_code.telegram_id = message.from_user.id
-                    await db.commit()
-                    await message.reply(
-                        "✅ **Success!**\nYou have successfully logged in on your device.\nYou can now enjoy watching! 🍿"
-                    )
-                    return
-                elif login_code.telegram_id:
-                    await message.reply("⚠️ This code has already been used.")
-                    return
-                else:
-                    await message.reply("❌ This code has expired.")
-                    return
+        try:
+            async with async_session() as db:
+                result = await db.execute(
+                    select(LoginCode).where(LoginCode.code == code_input)
+                )
+                login_code = result.scalar_one_or_none()
+                if login_code:
+                    if (
+                        login_code.expires_at > datetime.utcnow()
+                        and not login_code.telegram_id
+                    ):
+                        login_code.telegram_id = message.from_user.id
+                        await db.commit()
+                        await message.reply(
+                            "✅ **Success!**\nYou have successfully logged in on your device.\nYou can now enjoy watching! 🍿"
+                        )
+                        return
+                    elif login_code.telegram_id:
+                        await message.reply("⚠️ This code has already been used.")
+                        return
+                    else:
+                        await message.reply("❌ This code has expired.")
+                        return
+        except _DB_CONNECTIVITY_ERRORS as exc:
+            logger.warning("Start command database failure (%s)", type(exc).__name__)
+            await _reply_db_waking(message)
+            return
+
+    try:
+        web_button = await get_web_app_button(
+            message.from_user.id, "🌐 Open Web Interface", target=message
+        )
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Start command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
+    if web_button is None:
+        return
 
     await message.reply(
         "📺 **Welcome to Media Hub!**\n\n"
@@ -317,11 +372,7 @@ async def start_command(client, message: Message):
         "💡 Use `/file <id>` to delete a file.",
         reply_markup=InlineKeyboardMarkup(
             [
-                [
-                    await get_web_app_button(
-                        message.from_user.id, "🌐 Open Web Interface"
-                    )
-                ],
+                [web_button],
                 [InlineKeyboardButton("📁 Library", callback_data="show_files")],
             ]
         ),
@@ -393,9 +444,12 @@ async def _show_myfiles(target, telegram_id: int, offset: int = 0, edit: bool = 
 
     if not files:
         text = "📭 The shared library is empty.\n\nSend me a video to get started!"
-        markup = InlineKeyboardMarkup(
-            [[await get_web_app_button(telegram_id, "🌐 Open Web")]]
+        web_button = await get_web_app_button(
+            telegram_id, "🌐 Open Web", target=target
         )
+        if web_button is None:
+            return
+        markup = InlineKeyboardMarkup([[web_button]])
     else:
         text = "📁 **Recent Library Files:**\n\n"
         for f in files:
@@ -408,7 +462,12 @@ async def _show_myfiles(target, telegram_id: int, offset: int = 0, edit: bool = 
             text += "\n\n"
         text += "💡 Use /file <id> to manage a file"
 
-        buttons = [[await get_web_app_button(telegram_id, "🌐 Open Web")]]
+        web_button = await get_web_app_button(
+            telegram_id, "🌐 Open Web", target=target
+        )
+        if web_button is None:
+            return
+        buttons = [[web_button]]
         if has_next:
             buttons.append(
                 [
@@ -428,7 +487,13 @@ async def _show_myfiles(target, telegram_id: int, offset: int = 0, edit: bool = 
 @tg_client.on_message(filters.command("myfiles") & filters.private)
 async def myfiles_command(client, message: Message):
     """List recent library files with IDs for management (first page)."""
-    await _show_myfiles(message, message.from_user.id, offset=0, edit=False)
+    if not await require_active_member(message):
+        return
+    try:
+        await _show_myfiles(message, message.from_user.id, offset=0, edit=False)
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("My files command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
 
 
 @tg_client.on_message(filters.command("guest") & filters.private)
@@ -639,14 +704,25 @@ async def kick_command(client, message: Message):
 @tg_client.on_message(filters.command("web") & filters.private)
 async def web_command(client, message: Message):
     """Generate a web login link with a one-time code."""
-    await get_or_create_user(
-        message.from_user.id,
-        message.from_user.username,
-        message.from_user.first_name,
-        message.from_user.last_name,
-    )
+    if not await require_active_member(message):
+        return
 
-    btn = await get_web_app_button(message.from_user.id, "🚀 Open Web Interface")
+    try:
+        await get_or_create_user(
+            message.from_user.id,
+            message.from_user.username,
+            message.from_user.first_name,
+            message.from_user.last_name,
+        )
+        btn = await get_web_app_button(
+            message.from_user.id, "🚀 Open Web Interface", target=message
+        )
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Web command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
+    if btn is None:
+        return
     await message.reply(
         "🌐 **Web Interface**\n\nClick the button below to log in instantly.",
         reply_markup=InlineKeyboardMarkup([[btn]]),
@@ -656,50 +732,57 @@ async def web_command(client, message: Message):
 @tg_client.on_message(filters.command("login") & filters.private)
 async def login_command(client, message: Message):
     """Generate a TV login code or claim a code from /start."""
-    await get_or_create_user(
-        message.from_user.id,
-        message.from_user.username,
-        message.from_user.first_name,
-        message.from_user.last_name,
-    )
-
-    if len(message.command) > 1:
-        code_input = message.command[1].strip().upper()
-        async with async_session() as db:
-            result = await db.execute(
-                select(LoginCode).where(LoginCode.code == code_input)
-            )
-            login_code = result.scalar_one_or_none()
-            if not login_code:
-                return await message.reply("❌ **Invalid code.**")
-            if login_code.expires_at < datetime.utcnow():
-                return await message.reply("❌ **Code expired.**")
-            if login_code.telegram_id:
-                return await message.reply("❌ **Code already used.**")
-
-            login_code.telegram_id = message.from_user.id
-            await db.commit()
-            await message.reply(
-                "✅ **Success!**\nYou have successfully logged in on your TV."
-            )
+    if not await require_active_member(message):
         return
 
-    # Generate new 8-digit code
-    code = "".join(secrets.choice("0123456789") for _ in range(8))
-
-    async with async_session() as db:
-        db.add(
-            LoginCode(
-                code=code,
-                telegram_id=message.from_user.id,
-                expires_at=datetime.utcnow() + timedelta(minutes=5),
-            )
+    try:
+        await get_or_create_user(
+            message.from_user.id,
+            message.from_user.username,
+            message.from_user.first_name,
+            message.from_user.last_name,
         )
-        await db.commit()
 
-    await message.reply(
-        f"🔑 **Your Family Code:**\n\n`{code}`\n\nEnter this 8-digit code on the TV/Web login screen.\n__(Expires in 5 minutes)__"
-    )
+        if len(message.command) > 1:
+            code_input = message.command[1].strip().upper()
+            async with async_session() as db:
+                result = await db.execute(
+                    select(LoginCode).where(LoginCode.code == code_input)
+                )
+                login_code = result.scalar_one_or_none()
+                if not login_code:
+                    return await message.reply("❌ **Invalid code.**")
+                if login_code.expires_at < datetime.utcnow():
+                    return await message.reply("❌ **Code expired.**")
+                if login_code.telegram_id:
+                    return await message.reply("❌ **Code already used.**")
+
+                login_code.telegram_id = message.from_user.id
+                await db.commit()
+                await message.reply(
+                    "✅ **Success!**\nYou have successfully logged in on your TV."
+                )
+            return
+
+        # Generate new 8-digit code
+        code = "".join(secrets.choice("0123456789") for _ in range(8))
+
+        async with async_session() as db:
+            db.add(
+                LoginCode(
+                    code=code,
+                    telegram_id=message.from_user.id,
+                    expires_at=datetime.utcnow() + timedelta(minutes=5),
+                )
+            )
+            await db.commit()
+
+        await message.reply(
+            f"🔑 **Your Family Code:**\n\n`{code}`\n\nEnter this 8-digit code on the TV/Web login screen.\n__(Expires in 5 minutes)__"
+        )
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Login command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
 
 
 @tg_client.on_message(filters.command("logout_all") & filters.private)
@@ -794,6 +877,9 @@ async def handle_file(client, message: Message):
     - If DB insert fails, DELETE the forwarded Telegram message (compensation)
     - This prevents orphaned Telegram messages when DB is unavailable
     """
+    if not await require_active_member(message):
+        return
+
     if message.video:
         media = message.video
     elif message.audio:
@@ -991,7 +1077,13 @@ async def handle_callback(client, callback: CallbackQuery):
         await callback.answer()
 
     elif data == "get_web_link":
-        btn = await get_web_app_button(callback.from_user.id, "🚀 Open Web Interface")
+        btn = await get_web_app_button(
+            callback.from_user.id,
+            "🚀 Open Web Interface",
+            target=callback.message,
+        )
+        if btn is None:
+            return
         await callback.message.reply(
             "🌐 **Web Interface**\n\nClick the button below to log in instantly.",
             reply_markup=InlineKeyboardMarkup([[btn]]),
@@ -1099,6 +1191,9 @@ async def handle_callback(client, callback: CallbackQuery):
 @tg_client.on_message(filters.command("file") & filters.private)
 async def file_command(client, message: Message):
     """Manage a specific file by ID."""
+    if not await require_active_member(message):
+        return
+
     if len(message.command) < 2:
         return await message.reply("Usage: /file <file_id>")
 
@@ -1107,9 +1202,14 @@ async def file_command(client, message: Message):
     except ValueError:
         return await message.reply("❌ Invalid file ID.")
 
-    async with async_session() as db:
-        result = await db.execute(select(File).where(File.id == file_id))
-        file = result.scalar_one_or_none()
+    try:
+        async with async_session() as db:
+            result = await db.execute(select(File).where(File.id == file_id))
+            file = result.scalar_one_or_none()
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("File command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
 
     if not file:
         return await message.reply("❌ File not found in library.")
