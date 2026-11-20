@@ -353,7 +353,15 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T12.88 — Mobile exception parity and final player freeze
 
-**Scope:** verify parity of both owner-authorized mobile exceptions while preserving TV/PC behavior, every export, and both localStorage keys; record `git diff --stat -- web/src/components/MediaPlayer.tsx` evidence and freeze the file thereafter.
+**Files:** `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `web/src/components/MediaPlayer.tsx` must be byte-identical in this task (`git diff --stat -- web/src/components/MediaPlayer.tsx` empty). Extend the existing test file only if a parity gap needs a regression test. `mobilePlayer.ts` must not change behavior; if verification exposes a defect, stop and report it rather than fixing it.
+
+**Scope:** run all standard gates at the branch tip; build the phone-portrait/phone-landscape/tablet/Tizen-TV/PC parity matrix with **CONFIRMED by source** and **VERIFY ON DEVICE** labels; compare `git diff c7bf7ec..HEAD -- web/src/components/MediaPlayer.tsx` and enumerate every hunk category. Verify exports, both localStorage keys, the TV key map, and desktop surface-click behavior. If any parity defect is found, mark this task BLOCKED and wait for owner authorization; do not make a fix.
+
+**Final freeze:** after T12.88, no further `MediaPlayer.tsx` change is allowed without a new, explicit owner authorization. Record the freeze in `HANDOFF.md` and `PLAN.md`; device verification remains tracked for T15.
+
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build on Node 20; confirm `dist/_redirects`; preserve all existing backend/security tests. Confirm `MediaPlayer.tsx` has no task diff and only the T12.86/T12.87 owner-authorized exception hunks since c7bf7ec.
+
+**Commit:** `T12.88: Mobile/TV/PC parity verified — final MediaPlayer freeze declared — gate passed`
 
 ## T12.89 — Schema proof, deploy runbooks, proxy validation, and provenance
 
