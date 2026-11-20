@@ -8,6 +8,10 @@ export function isPhonePlayer(): boolean {
     return getDeviceKind() === 'phone' && !isTV();
 }
 
+export function resolveSurfaceTap(kind: DeviceKind): 'toggle-controls' | 'toggle-play' {
+    return kind === 'phone' ? 'toggle-controls' : 'toggle-play';
+}
+
 export function shouldAutoLandscape(
     isVideo: boolean,
     kind: DeviceKind,

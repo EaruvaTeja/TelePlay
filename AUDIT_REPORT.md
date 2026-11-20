@@ -415,3 +415,20 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - Node **20.19.5** / npm **10.8.2**; `npm ci`: **PASS** (447 packages; 24 dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical; no dependency changes); `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **3 files, 166 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**.
 - **CONFIRMED:** all 190 existing backend tests passed; the new frontend helper tests passed; no security tests were weakened or deleted. `git diff --check`: **PASS**.
 - **VERIFY ON DEVICE:** Android Chrome native landscape lock; iPhone Safari CSS pseudo-landscape fallback/toggle; minimizing and closing restore portrait. No physical-device test was performed.
+
+## T12.87 — Mobile tap controls
+
+### Implementation and freeze — CONFIRMED
+
+- `web/src/lib/mobilePlayer.ts` adds `resolveSurfaceTap(kind)`: phone resolves to `toggle-controls`; TV, computer, and tablet resolve to `toggle-play`.
+- `web/src/lib/__tests__/mobilePlayer.test.ts` adds resolver tests for all four device kinds, including non-phone regression expectations.
+- Exact changed hunks in `web/src/components/MediaPlayer.tsx`: update surface-tap behavior documentation; phone-only root touch/mousemove/click exceptions keep bubbling and compatibility pointer events from undoing the surface toggle; video clicks route through the resolver; phone double-click fullscreen is disabled; a phone-only, visible-controls playing cluster adds Rewind-10/Pause/Forward-10. Existing paused cluster, bottom-bar buttons, key handlers, and non-phone `togglePlay` path remain.
+- **CONFIRMED by source:** phone surface taps invoke only `revealControls()`/`hideControlsNow()` and do not call playback toggles; the existing 4-second reveal timer remains active. Root touch/click reveal/focus behavior remains for the rest of the player. `seekBack10`/`seekFwd10` remain seek operations; playback buttons remain the center and bottom-bar controls.
+- **CONFIRMED:** no export, localStorage key, dependency, index.css, scrubber, settings, minimize-bar, TV key-map, or keyboard/D-pad behavior changes were made. Freeze resumes after T12.87; T12.88 is parity verification.
+
+### Fresh T12.87 gate evidence — CONFIRMED
+
+- Date: 2026-11-20; branch: `hearth/t12.87`; base: latest `main` at `e8dc7b9d5d787c440f8d3e0f82979a75ef5b3d1a`.
+- Python 3.13.0; backend `.venv\Scripts\python -m pytest -q`: **190 passed, 61 warnings**; `.venv\Scripts\python -m compileall -q app`: **PASS**; `.venv\Scripts\pip check`: **PASS; no broken requirements**.
+- Node **20.19.5** / npm **10.8.2**; `npm ci`: **PASS** (447 packages; 24 dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical; no dependency changes); `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **3 files, 170 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**.
+- **VERIFY ON DEVICE:** confirm phone video-surface taps never pause/play; center and bar buttons alone toggle playback; center ±10-second buttons seek; TV remote OK/Enter and PC mouse click/double-click regressions. No physical-device test was performed.

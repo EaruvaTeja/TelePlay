@@ -5,7 +5,8 @@
  *  · CENTER CLICK FIX: the full-screen controls wrapper no longer swallows pointer
  *    events. The wrapper is click-through; only real buttons/sliders inside it are
  *    clickable (see PLAYER_CSS [data-hp-wrap]). Clicking the picture, the empty
- *    gradient areas or the title text reaches <video onClick> → togglePlay().
+ *    gradient areas or title text reaches <video onClick>; phone taps toggle controls,
+ *    while non-phone surface taps keep toggling playback.
  *  · FOCUS RINGS: rings are drawn only while the user is driving with a remote /
  *    keyboard (root[data-hp-input="key"]). Any mouse/touch interaction flips the root
  *    to "pointer" and every ring disappears instantly. Rings use box-shadow (follows
@@ -44,6 +45,7 @@ import type {
     PointerEvent as ReactPointerEvent,
     ReactNode,
     Ref,
+    TouchEvent as ReactTouchEvent,
 } from 'react';
 import {
     ArrowLeft, AlertTriangle, Check, ChevronDown, ChevronUp, Crop, FastForward,
@@ -59,6 +61,7 @@ import {
     computePseudoLandscape,
     isPhonePlayer,
     lockLandscape,
+    resolveSurfaceTap,
     shouldAutoLandscape,
     unlockLandscape,
 } from '../lib/mobilePlayer';
@@ -2210,14 +2213,20 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     }, []);
 
     /* ── Root pointer handlers ── */
-    const onRootMouseMove = () => {
+    const isPhoneVideoSurface = (target: EventTarget | null) =>
+        phonePlayer && target instanceof Element && !!target.closest('video');
+    const onRootTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+        if (!isPhoneVideoSurface(e.target)) revealControls();
+    };
+    const onRootMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
+        if (isPhoneVideoSurface(e.target)) return;
         const now = performance.now();
         if (now - lastMoveRef.current < MOVE_THROTTLE_MS) return;
         lastMoveRef.current = now;
         revealControls();
     };
     const onRootClick = (e: ReactMouseEvent<HTMLDivElement>) => {
-        revealControls();
+        if (!isPhoneVideoSurface(e.target)) revealControls();
         const root = containerRef.current;
         if (root && root.dataset.hpInput === 'pointer') {
             // A mouse/touch click must not leave a focused control behind (no lingering highlight, Space keeps toggling playback).
@@ -2298,7 +2307,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                 ? { height: 'calc(5rem + env(safe-area-inset-bottom))', paddingBottom: 'env(safe-area-inset-bottom)' }
                 : { cursor: playing && !controlsVisible ? 'none' : 'default' }}
             onMouseMove={!isMinimized ? onRootMouseMove : undefined}
-            onTouchStart={!isMinimized ? revealControls : undefined}
+            onTouchStart={!isMinimized ? onRootTouchStart : undefined}
             onClick={!isMinimized ? onRootClick : undefined}
             onFocusCapture={onFocusCapture}
             onContextMenu={(e) => e.preventDefault()}
@@ -2323,8 +2332,15 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                         preload="auto"
                         crossOrigin={subs.length > 0 ? 'anonymous' : undefined}
                         controls={false}
-                        onClick={togglePlay}
-                        onDoubleClick={fsSupported ? toggleFullscreen : undefined}
+                        onClick={() => {
+                            if (resolveSurfaceTap(playerKind) === 'toggle-controls') {
+                                if (controlsVisible) hideControlsNow();
+                                else revealControls();
+                                return;
+                            }
+                            togglePlay();
+                        }}
+                        onDoubleClick={fsSupported && !phonePlayer ? toggleFullscreen : undefined}
                         onPlay={() => {
                             requestLandscapeOnPlay();
                             setPlaying(true);
@@ -2468,6 +2484,30 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                     </div>
                 )}
 
+                {phonePlayer && isVideo && videoMounted && phase === 'ready' && playing
+                    && showCtl && !buffering && !dialogOpen && !finished && !isMinimized && (
+                        <div className="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-6 sm:gap-8">
+                            <button
+                                type="button" aria-label="Back 10 seconds" onClick={seekBack10}
+                                className="hp-focus flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-white/80 transition-[background-color,color] duration-150 hover:bg-white/20 hover:text-white"
+                            >
+                                <Rewind className="h-7 w-7" />
+                            </button>
+                            <button
+                                type="button" aria-label="Pause" onClick={togglePlay}
+                                className="hp-focus flex h-20 w-20 items-center justify-center rounded-full bg-[#2dd4bf] text-[#04110f] transition-[background-color,transform] duration-150 hover:scale-105 hover:bg-[#5eead4] active:scale-95"
+                            >
+                                <Pause className="h-10 w-10" />
+                            </button>
+                            <button
+                                type="button" aria-label="Forward 10 seconds" onClick={seekFwd10}
+                                className="hp-focus flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-white/80 transition-[background-color,color] duration-150 hover:bg-white/20 hover:text-white"
+                            >
+                                <FastForward className="h-7 w-7" />
+                            </button>
+                        </div>
+                    )}
+
                 {finished && !errorMessage && (
                     <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-6">
                         <div className="hp-scale-in w-full max-w-sm rounded-2xl border border-[#1a2524] bg-[#0e1514] p-6 text-center shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
@@ -2509,8 +2549,8 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                     </div>
                 )}
 
-                {/* Controls overlay. Click-through by design (see PLAYER_CSS [data-hp-wrap]): only the real buttons and
-                    sliders inside it capture the pointer, so a click anywhere else reaches the <video> and toggles playback. */}
+                {/* Controls overlay. Click-through by design (see PLAYER_CSS [data-hp-wrap]): only real buttons and
+                    sliders capture the pointer; other taps reach the device-specific <video> surface handler. */}
                 {videoMounted && phase === 'ready' && !dialogOpen && !finished && (
                     <div
                         ref={ctlWrapRef}
