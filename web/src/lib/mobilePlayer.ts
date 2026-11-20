@@ -12,6 +12,18 @@ export function resolveSurfaceTap(kind: DeviceKind): 'toggle-controls' | 'toggle
     return kind === 'phone' ? 'toggle-controls' : 'toggle-play';
 }
 
+export function sliderRatio(
+    rect: { left: number; top: number; width: number; height: number },
+    clientX: number,
+    clientY: number,
+    rotated: boolean,
+): number {
+    const offset = rotated ? clientY - rect.top : clientX - rect.left;
+    const length = rotated ? rect.height : rect.width;
+    if (length <= 0) return 0;
+    return Math.min(1, Math.max(0, offset / length));
+}
+
 export function shouldAutoLandscape(
     isVideo: boolean,
     kind: DeviceKind,

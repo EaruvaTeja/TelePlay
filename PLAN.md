@@ -25,7 +25,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | 5 | T15 | Owner (agent assists) | VPS+Pages deploy + acceptance evidence | `T15: Real-World Hardware Acceptance — evidence recorded` |
 | 6 | T16 | Owner (agent assists) | GO decision + 72h observation log | `T16: Launch & 72-hour observation — GO recorded` |
 
-### 2026-11-20 post-incident execution map (T12.81–T12.92, including T12.90.1 follow-up)
+### 2026-11-20 post-incident execution map (T12.81–T12.92, including T12.90.1/T12.90.2 follow-ups)
 
 | Task | Scope |
 |---|---|
@@ -40,6 +40,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | T12.89 | Prove schema with `verify_schema.py`; fix deploy runbooks; validate proxy configuration; record provenance. |
 | T12.90 | Reliability hardening (A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default `confirm=False`, refresh-lifetime decision); replace the banner; run final clean-checkout gates and record freeze-candidate SHA. |
 | T12.90.1 | Restore transient auth-key retry behavior; quarantine a client only after 3 auth-key failures within 60 seconds, and clear the counter on successful lookup/chunk delivery. |
+| T12.90.2 | OWNER-AUTHORIZED MediaPlayer exception #4: map pseudo-landscape Scrubber/VolumeBar pointer input along the visual vertical axis; rerun final clean-checkout gates and resume the freeze. |
 | T12.91 | Stale bundle and VPS disk/RAM recovery; incident A-item tracking. |
 | T12.92 | Final freeze plus T0-R, T15-R, and T16-R gate reruns before handoff. |
 
@@ -395,6 +396,20 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 **Gate:** full backend `.venv\Scripts\python -m pytest -q`, `compileall -q app`, and `pip check`; frontend Node 20 `npm ci`, lint, typecheck, tests, build, and confirm `dist/_redirects`; `npm audit --omit=dev`; `git diff --check`; confirm no dependency changes and an empty `MediaPlayer.tsx` diff. VPS auth-key recovery remains **VERIFY ON VPS**.
 
 **Commit:** `T12.90.1: Auth-key unhealthy marking requires persistent failures (3/60s) — gate passed`
+
+## T12.90.2 — OWNER-AUTHORIZED MediaPlayer exception #4: pseudo-landscape slider axis
+
+**Files:** `web/src/lib/mobilePlayer.ts`, `web/src/components/MediaPlayer.tsx`, `web/src/lib/__tests__/mobilePlayer.test.ts` (extend), `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+**Owner authorization:** 2026-11-20. The T12.88 MediaPlayer freeze is reopened for this task only; freeze resumes immediately upon completion.
+
+**Scope:** add pure `sliderRatio(rect, clientX, clientY, rotated)` math with clamping and zero-dimension guards. In rotated mode use vertical pointer coordinate and rectangle height; otherwise use horizontal coordinate and width. Add optional `rotated` props to Scrubber and VolumeBar, pass the phone-only `pseudoLandscape` state, and route pointer-down/move ratio calculations through the helper. Leave local paint coordinates (`scaleX`/`left%`) unchanged. No other player behavior, exports, TV/desktop controls, or storage keys may change.
+
+**Gate:** full backend and frontend standard gates; then repeat T12.90's clean-checkout release suite with fresh Python 3.13 environment, pytest/compileall/pip check/pip-audit, Node 20 npm ci/lint/typecheck/test/build/_redirects/npm audit, hygiene checks, and cumulative MediaPlayer exception-category review. Record the tested candidate SHA/tree and supersede the T12.90 freeze candidate in `PROGRESS.md`/`AUDIT_REPORT.md`. Update the T12.88 parity matrix: pseudo-landscape Scrubber/VolumeBar axis mapping is **CONFIRMED by source**; physical iPhone/Android and TV/PC checks remain **VERIFY ON DEVICE**.
+
+**Manual checklist — VERIFY ON DEVICE:** iPhone portrait fallback progress drag seeks along the visual bar; volume drag follows the visual bar; Portrait view control and physical rotation exit cleanly; Android native orientation lock is unaffected.
+
+**Commit:** `T12.90.2: Pseudo-landscape slider axis fix (owner-authorized exception #4) + final freeze gates — gate passed`
 
 ## T12.91 — Stale bundle and VPS resource recovery
 

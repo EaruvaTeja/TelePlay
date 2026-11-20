@@ -5,6 +5,7 @@ import {
     lockLandscape,
     resolveSurfaceTap,
     shouldAutoLandscape,
+    sliderRatio,
     unlockLandscape,
 } from '../mobilePlayer';
 import type { DeviceKind } from '../device';
@@ -73,6 +74,34 @@ describe('resolveSurfaceTap', () => {
         ['tablet', 'toggle-play'],
     ] as const)('%s keeps its established surface action', (kind, expected) => {
         expect(resolveSurfaceTap(kind)).toBe(expected);
+    });
+});
+
+describe('sliderRatio', () => {
+    const rect = { left: 10, top: 20, width: 100, height: 80 };
+
+    it('uses the horizontal axis for an unrotated slider', () => {
+        expect(sliderRatio(rect, 35, 75, false)).toBeCloseTo(0.25);
+    });
+
+    it('uses the vertical axis for a rotated slider', () => {
+        expect(sliderRatio(rect, 85, 40, true)).toBeCloseTo(0.25);
+    });
+
+    it.each([
+        [0, 50, false, 0],
+        [120, 50, false, 1],
+        [50, 0, true, 0],
+        [50, 120, true, 1],
+    ])('clamps pointer position (%s, %s, rotated=%s)', (clientX, clientY, rotated, expected) => {
+        expect(sliderRatio(rect, clientX, clientY, rotated)).toBe(expected);
+    });
+
+    it.each([
+        [{ ...rect, width: 0 }, false],
+        [{ ...rect, height: 0 }, true],
+    ])('returns zero for a zero-sized active axis', (degenerateRect, rotated) => {
+        expect(sliderRatio(degenerateRect, 50, 50, rotated)).toBe(0);
     });
 });
 
