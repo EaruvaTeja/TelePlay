@@ -49,8 +49,8 @@ import type {
 } from 'react';
 import {
     ArrowLeft, AlertTriangle, Check, ChevronDown, ChevronUp, Crop, FastForward,
-    Film, Gauge, Info, Layers, Loader2, Maximize, Minimize, Minus, Monitor, Music,
-    Pause, PictureInPicture2, Play, Plus, RectangleHorizontal, Rewind, RotateCcw,
+    Film, Gauge, Info, Layers, Loader2, Maximize, Minimize, Monitor, Music,
+    Pause, PictureInPicture2, Play, RectangleHorizontal, Rewind, RotateCcw,
     Settings, Smartphone, Sparkles, StretchHorizontal, Subtitles, Tablet, Tv, Users,
     Volume1, Volume2, VolumeX, X,
 } from 'lucide-react';
@@ -373,9 +373,9 @@ function stepWrap(root: HTMLElement | null, dir: 1 | -1) {
     items[(i + dir + items.length) % items.length]?.focus();
 }
 
-/** Linear move that stops at the ends (bars). The volume slider is skipped — it has its own −/+ buttons. */
+/** Linear move that stops at the ends (bars). */
 function stepLinear(root: HTMLElement | null, dir: 1 | -1) {
-    const items = focusablesIn(root).filter(el => !el.hasAttribute('data-hp-vol'));
+    const items = focusablesIn(root);
     if (!items.length) return;
     const i = items.indexOf(document.activeElement as HTMLElement);
     if (i < 0) { items[dir > 0 ? 0 : items.length - 1].focus(); return; }
@@ -812,34 +812,6 @@ const Scrubber = memo(function Scrubber({ duration, secStore, disabled, rotated,
                         {fmtTime(preview)}
                     </div>
                 )}
-            </div>
-        </div>
-    );
-});
-
-const VolumeBar = memo(function VolumeBar({ value, muted, rotated, onChange }: { value: number; muted: boolean; rotated?: boolean; onChange: (v: number) => void }) {
-    const ref = useRef<HTMLDivElement>(null);
-    const drag = useRef(false);
-    const eff = muted ? 0 : value;
-    const setAt = (clientX: number, clientY: number) => {
-        const r = ref.current?.getBoundingClientRect();
-        if (!r) return;
-        onChange(sliderRatio(r, clientX, clientY, !!rotated));
-    };
-    return (
-        <div
-            ref={ref} data-hp-vol data-hp-controls role="slider" tabIndex={0} aria-label="Volume"
-            aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(eff * 100)}
-            aria-valuetext={`${Math.round(eff * 100)} percent`}
-            className="hp-focus relative hidden h-9 w-24 cursor-pointer items-center sm:flex"
-            style={{ touchAction: 'none' }}
-            onPointerDown={(e) => { drag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ } setAt(e.clientX, e.clientY); }}
-            onPointerMove={(e) => { if (drag.current) setAt(e.clientX, e.clientY); }}
-            onPointerUp={() => { drag.current = false; }}
-            onPointerCancel={() => { drag.current = false; }}
-        >
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/15">
-                <div className="h-full rounded-full bg-[#2dd4bf] transition-[width] duration-100" style={{ width: `${eff * 100}%` }} />
             </div>
         </div>
     );
@@ -1654,17 +1626,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefsRef.current)); } catch { /* noop */ }
     }, []);
 
-    const setVolumeLevel = useStableCallback((val: number) => {
-        const nv = clamp(val, 0, 1);
-        patchPrefs({ volume: nv, muted: nv === 0 });
-    });
-    const stepVolume = useStableCallback((d: number) => {
-        const cur = prefsRef.current.muted ? 0 : prefsRef.current.volume;
-        setVolumeLevel(Math.round((cur + d) * 10) / 10);
-    });
     const toggleMute = useStableCallback(() => patchPrefs({ muted: !prefsRef.current.muted }));
-    const volDown = useStableCallback(() => stepVolume(-0.1));
-    const volUp = useStableCallback(() => stepVolume(0.1));
     const setRate = (r: number) => patchPrefs({ rate: r });
     const stepRate = (d: number) => {
         const i = SPEEDS.indexOf(prefsRef.current.rate);
@@ -2135,20 +2097,17 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         const inTop = !!t?.closest?.('[data-hp-top]');
         const inBar = !!t?.closest?.('[data-hp-bar]');
         const onScrub = !!t?.closest?.('[data-hp-scrubber]');
-        const onVol = !!t?.closest?.('[data-hp-vol]');
         const onToast = !!t?.closest?.('[data-hp-toast]');
         const arrow = dir !== null;
 
         switch (k) {
             case ' ': case 'k': case 'K': case 'Enter':
                 e.preventDefault();
-                if (onVol && (k === 'Enter' || k === ' ')) toggleMute();
-                else togglePlay(); // OK on the picture, the scrubber or the root → instant play/pause
+                togglePlay(); // OK on the picture, the scrubber or the root → instant play/pause
                 break;
             case 'ArrowLeft': case 'j': case 'J':
                 e.preventDefault();
                 if (arrow) {
-                    if (onVol) { stepVolume(-0.1); break; }
                     if (inTop) { stepLinear(topRef.current, -1); break; }
                     if (inBar) { stepLinear(barRef.current, -1); break; }
                 }
@@ -2157,7 +2116,6 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             case 'ArrowRight': case 'l': case 'L':
                 e.preventDefault();
                 if (arrow) {
-                    if (onVol) { stepVolume(0.1); break; }
                     if (inTop) { stepLinear(topRef.current, 1); break; }
                     if (inBar) { stepLinear(barRef.current, 1); break; }
                 }
@@ -2603,11 +2561,6 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                                     />
                                     <IconBtn label="Back 10 seconds" onClick={seekBack10} icon={Rewind} />
                                     <IconBtn label="Forward 10 seconds" onClick={seekFwd10} icon={FastForward} />
-                                    <span className="mx-1 hidden h-6 w-px bg-white/15 sm:block" />
-                                    <IconBtn label={prefs.muted ? 'Unmute' : 'Mute'} onClick={toggleMute} active={prefs.muted} icon={VolIcon} />
-                                    <IconBtn label="Volume down" onClick={volDown} icon={Minus} iconClass="h-4 w-4" />
-                                    <VolumeBar value={prefs.volume} muted={prefs.muted} rotated={pseudoLandscape} onChange={setVolumeLevel} />
-                                    <IconBtn label="Volume up" onClick={volUp} icon={Plus} iconClass="h-4 w-4" />
                                 </div>
 
                                 <div className="flex items-center gap-1 sm:gap-1.5">
