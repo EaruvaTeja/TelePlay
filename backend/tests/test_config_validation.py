@@ -78,3 +78,38 @@ def test_telegram_proxy_settings_load_from_environment(monkeypatch):
     assert s.telegram_proxy_port == "40000"
     assert s.telegram_proxy_username == "user"
     assert s.telegram_proxy_password == "password"
+
+
+@pytest.mark.parametrize("scheme", ["socks5", "socks4", "http"])
+@pytest.mark.parametrize("port", ["1", "65535"])
+def test_telegram_proxy_accepts_supported_schemes_and_port_bounds(monkeypatch, scheme, port):
+    _base(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST", "127.0.0.1")
+    monkeypatch.setenv("TELEGRAM_PROXY_SCHEME", scheme)
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT", port)
+
+    settings = Settings()
+
+    assert settings.telegram_proxy_scheme == scheme
+    assert settings.telegram_proxy_port == port
+
+
+@pytest.mark.parametrize("port", ["", "abc", "0", "-1", "65536"])
+def test_telegram_proxy_rejects_invalid_port_when_host_is_set(monkeypatch, port):
+    _base(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST", "127.0.0.1")
+    monkeypatch.setenv("TELEGRAM_PROXY_SCHEME", "socks5")
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT", port)
+
+    with pytest.raises(ValidationError, match="TELEGRAM_PROXY_PORT"):
+        Settings()
+
+
+def test_telegram_proxy_rejects_unsupported_scheme_when_host_is_set(monkeypatch):
+    _base(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST", "127.0.0.1")
+    monkeypatch.setenv("TELEGRAM_PROXY_SCHEME", "ftp")
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT", "1080")
+
+    with pytest.raises(ValidationError, match="TELEGRAM_PROXY_SCHEME"):
+        Settings()

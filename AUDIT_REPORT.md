@@ -467,3 +467,20 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **CONFIRMED:** `git diff --check` passes; package manifests, `mobilePlayer.ts`, tests, and `MediaPlayer.tsx` have no T12.88 changes. No tests were removed or weakened.
 - **FINAL FREEZE — CONFIRMED:** no `MediaPlayer.tsx` changes are allowed after T12.88 without new, explicit owner authorization. This freeze is recorded in `HANDOFF.md` and `PLAN.md`.
 - **VERIFY ON DEVICE:** phone portrait/landscape controls and orientation, minimize/close restoration, Tizen remote behavior, and PC mouse behavior remain for hardware acceptance.
+
+## T12.89 — Schema proof, deploy runbooks, proxy validation, and provenance
+
+### Implementation and regression evidence — CONFIRMED
+
+- `backend/scripts/verify_schema.py` imports the app models and configured async engine, performs SQLAlchemy inspection only, and reports missing/unexpected tables and columns, type/nullability/default differences, primary keys, indexes, and unique constraints. Drift produces exit code 1; the script issues no DDL or data writes.
+- **CONFIRMED by SQLite regression tests:** matching metadata is clean; missing `family_members`, wrong `users.telegram_id` type, and missing unique index are detected. The async app-engine inspection path also passes against temporary SQLite.
+- **CONFIRMED by tests:** configured proxy hosts accept `socks5`, `socks4`, or `http` with ports 1–65535 and reject unsupported schemes or missing, non-numeric, and out-of-range ports.
+- **CONFIRMED by source/doc review:** the deploy runbook now loads environment variables inside the target `hearth` process for `smoke_db.py`, removes nonexistent `refresh_tokens` from backup row counts and includes `watch_progress`, requires read-only schema checks before/after boot after backup, documents the session write path under `ProtectSystem=strict`, and records GitHub provenance plus A6/A7 bundle/hotfix/deployment-log controls. `.env.example` changes are comments only.
+
+### Fresh T12.89 gate evidence — CONFIRMED
+
+- Date: 2026-11-20; branch: `hearth/t12.89`; base SHA: `db4776ad0aa2d31b28828ebc5bd9103fb5609a2a`; gates ran against the base plus the complete T12.89 worktree.
+- Python **3.13.0**; backend `.venv\Scripts\python -m pytest -q`: **208 passed, 61 warnings**; `.venv\Scripts\python -m compileall -q app`: **PASS**; `.venv\Scripts\python -m pip check`: **PASS; no broken requirements**.
+- Node **20.20.2** / npm **11.20.0**; `npm ci`: **PASS** (447 packages; 24 reported vulnerabilities: 1 low, 6 moderate, 15 high, 2 critical; no dependency changes); `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **3 files, 170 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**.
+- Targeted proxy/schema tests: **25 passed**. `git diff --check`: **PASS**. `MediaPlayer.tsx` has no task diff; dependency manifests/lockfiles are unchanged.
+- **VERIFY ON VPS:** run `verify_schema.py` against the Neon DIRECT endpoint before and after the release boot, retain both reports, and confirm the post-boot schema is clean. Confirm the corrected smoke command and deployment logging on the VPS. No Neon connection or VPS deployment was performed for this task.

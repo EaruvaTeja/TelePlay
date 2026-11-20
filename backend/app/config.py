@@ -243,6 +243,24 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_policy(self) -> "Settings":
+        if self.telegram_proxy_host:
+            if self.telegram_proxy_scheme not in {"socks5", "socks4", "http"}:
+                raise ValueError(
+                    "TELEGRAM_PROXY_SCHEME must be socks5, socks4, or http "
+                    "when TELEGRAM_PROXY_HOST is set"
+                )
+            try:
+                proxy_port = int(self.telegram_proxy_port)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "TELEGRAM_PROXY_PORT must be an integer from 1 to 65535 "
+                    "when TELEGRAM_PROXY_HOST is set"
+                ) from exc
+            if not 1 <= proxy_port <= 65535:
+                raise ValueError(
+                    "TELEGRAM_PROXY_PORT must be an integer from 1 to 65535 "
+                    "when TELEGRAM_PROXY_HOST is set"
+                )
         if not self.auth_users:
             raise ValueError(
                 "AUTH_USERS must contain at least one Telegram user ID (comma-separated). "
