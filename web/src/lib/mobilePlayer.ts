@@ -2,6 +2,9 @@ import { getDeviceKind, isTV, type DeviceKind } from './device';
 
 export type PlayerDragSide = 'left' | 'right';
 export type LockGestureClassification = 'tap' | 'drag' | 'ignore';
+export type LockNoticeAction = 'locked' | 'paused' | 'playing';
+
+export const LOCK_HOLD_TO_UNLOCK_MS = 1000;
 
 export function isPhonePlayer(): boolean {
     return getDeviceKind() === 'phone' && !isTV();
@@ -74,6 +77,30 @@ export function classifyLockGesture(deltaX: number, deltaY: number): LockGesture
 
 export function shouldToggleLockedPlayback(deltaX: number): boolean {
     return Number.isFinite(deltaX) && deltaX >= 32;
+}
+
+export function getLockHoldProgress(elapsedMs: number): number {
+    if (!Number.isFinite(elapsedMs)) return 0;
+    return Math.min(1, Math.max(0, elapsedMs / LOCK_HOLD_TO_UNLOCK_MS));
+}
+
+export function shouldUnlockAfterLockHold(elapsedMs: number): boolean {
+    return Number.isFinite(elapsedMs) && elapsedMs >= LOCK_HOLD_TO_UNLOCK_MS;
+}
+
+export function getLockedDragProgress(deltaX: number): number {
+    if (!Number.isFinite(deltaX)) return 0;
+    return Math.min(1, Math.max(0, deltaX / 32));
+}
+
+export function getLockNotice(action: LockNoticeAction): { title: string; subtitle: string } {
+    if (action === 'paused') {
+        return { title: 'Paused', subtitle: 'Still locked. Drag right to play.' };
+    }
+    if (action === 'playing') {
+        return { title: 'Playing', subtitle: 'Still locked. Drag right to pause.' };
+    }
+    return { title: 'Locked', subtitle: 'Hold lock 1s to unlock.' };
 }
 
 export function getLockedPlaybackAction(isPlaying: boolean): 'pause' | 'play' {

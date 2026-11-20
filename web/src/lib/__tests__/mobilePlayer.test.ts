@@ -5,11 +5,15 @@ import {
     calculateDragValue,
     clampBrightness,
     clampVolume,
+    getLockHoldProgress,
+    getLockNotice,
+    getLockedDragProgress,
     getLockedPlaybackAction,
     resolveSurfaceTap,
     selectDragSide,
     shouldClaimVerticalDrag,
     shouldAutoUnlockControlLock,
+    shouldUnlockAfterLockHold,
     shouldToggleLockedPlayback,
     shouldUseDeviceVolumeButtons,
     shouldUseWebkitFullscreenFallback,
@@ -171,6 +175,52 @@ describe('phone lock gesture helpers', () => {
     it('toggles toward the opposite playback action', () => {
         expect(getLockedPlaybackAction(true)).toBe('pause');
         expect(getLockedPlaybackAction(false)).toBe('play');
+    });
+
+    it.each([
+        [-1, 0],
+        [0, 0],
+        [500, 0.5],
+        [1000, 1],
+        [1500, 1],
+        [Number.NaN, 0],
+    ])('reports hold progress for %s ms', (elapsedMs, expected) => {
+        expect(getLockHoldProgress(elapsedMs)).toBe(expected);
+    });
+
+    it.each([
+        [999, false],
+        [1000, true],
+        [1500, true],
+        [Number.NaN, false],
+    ])('requires a one-second hold (%s ms)', (elapsedMs, expected) => {
+        expect(shouldUnlockAfterLockHold(elapsedMs)).toBe(expected);
+    });
+
+    it.each([
+        [-8, 0],
+        [0, 0],
+        [16, 0.5],
+        [32, 1],
+        [56, 1],
+        [Number.NaN, 0],
+    ])('maps rightward travel to drag progress (%s px)', (deltaX, expected) => {
+        expect(getLockedDragProgress(deltaX)).toBe(expected);
+    });
+
+    it('provides clear unlock instructions and locked playback feedback', () => {
+        expect(getLockNotice('locked')).toEqual({
+            title: 'Locked',
+            subtitle: 'Hold lock 1s to unlock.',
+        });
+        expect(getLockNotice('paused')).toEqual({
+            title: 'Paused',
+            subtitle: 'Still locked. Drag right to play.',
+        });
+        expect(getLockNotice('playing')).toEqual({
+            title: 'Playing',
+            subtitle: 'Still locked. Drag right to pause.',
+        });
     });
 
     it.each([

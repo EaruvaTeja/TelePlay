@@ -814,6 +814,25 @@
     50%      { box-shadow: 0 0 36px 6px rgba(45, 212, 191, 0.22); }
 }
 
+@keyframes hp-lock-arrow-cue {
+    0%, 100% { opacity: 0.45; transform: translateX(0); }
+    50%      { opacity: 0.85; transform: translateX(3px); }
+}
+
+.hp-lock-arrow-cue {
+    animation: hp-lock-arrow-cue 1.6s ease-in-out infinite;
+}
+
+@keyframes hp-lock-drag-confirm {
+    0%   { opacity: 0.75; transform: scale(1); }
+    50%  { opacity: 1; transform: scale(1.13); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.hp-lock-drag-confirm {
+    animation: hp-lock-drag-confirm 220ms ease-out;
+}
+
 /* ═══════════════════════════ 6 · Print ═══════════════════════════ */
 
 @media print {

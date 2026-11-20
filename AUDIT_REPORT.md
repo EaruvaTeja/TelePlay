@@ -858,3 +858,35 @@ The existing `handleBack` closes settings first; closes the player if a dialog i
 - **VERIFY ON TV:** None for this backend-only endpoint.
 - **VERIFY ON VPS:** After the owner deploys, verify authenticated guest and family requests return only `{active, limit}` and an unauthenticated request returns 401. No VPS request was made for this task.
 - **CONFIRMED:** Deviations: none. Deleted tests: none. No device, TV, or VPS behavior is claimed as tested.
+
+## T13.8.1 — Phone lock UX polish
+
+### Changes — CONFIRMED
+
+- **CONFIRMED:** Added a one-second hold-to-unlock interaction for pointer input with a progress ring. A short press stays locked and shows the two-line “Locked” / “Hold lock 1s to unlock” message; keyboard activation remains the existing immediate accessible path.
+- **CONFIRMED:** Added an adjacent animated right-arrow cue and a subtle “Drag right to pause/play” hint beneath the visible lock handle. Right-drag progress now brightens/scales the travel cue and moves the handle; crossing the existing 32px threshold pulses the handle and shows a “Paused” or “Playing” notice without unlocking.
+- **CONFIRMED:** Hold/drag progress and timers reset on pointer release/cancel/lost capture, unlock, and unmount. New `index.css` additions are only `hp-lock-*` keyframes/classes animating `transform` and `opacity`; no backdrop filter or dependency changes.
+- **CONFIRMED:** Before this follow-up, source on latest main unlocked a pointer tap immediately; after the owner clarified the desired behavior, this task adds the requested one-second hold. No playback/session or storage logic changed.
+- **CONFIRMED:** Files touched: `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, `web/src/index.css`, `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PROGRESS.md` current regular task remains T13.10.
+
+### MediaPlayer hunk accounting — CONFIRMED
+
+- **CONFIRMED:** Import hunk adds the ChevronRight cue and lock hold/progress/notice helpers; state/ref hunks add only phone-lock hold, drag-progress, threshold, and notice state.
+- **CONFIRMED:** Lock lifecycle hunk adds guarded hold-timer/progress cleanup and action-specific notice copy; lock/unlock reset these values. The Back hint now accurately says “Hold lock 1s to unlock.”
+- **CONFIRMED:** Unmount hunk clears the new lock hold timers.
+- **CONFIRMED:** Pointer-handler hunks add one-second hold detection, short-press notice, drag progress/threshold feedback, action confirmation, and lost-capture cleanup; existing pointer-capture calls remain guarded.
+- **CONFIRMED:** Locked video-surface tap now reveals the handle and unlock instructions. Derived/render hunks show the two-line notice, SVG progress ring, arrow/track cue, below-handle drag hint, and accessible instructions. These changes are all within Exception #5.7.1; no non-lock hunk was changed.
+
+### Gates — CONFIRMED
+
+- **CONFIRMED:** Node **20.20.2** / npm **10.8.2**; `npx vitest run src/lib/__tests__/mobilePlayer.test.ts` — **1 file, 64 tests passed**; full `npx vitest run` — **3 files, 78 tests passed**; `npm run typecheck` — PASS (`tsc --noEmit`); `npm run lint` — PASS, 0 warnings; `npm run build` — PASS (1,529 modules); `dist/_redirects` — present; `git diff --check` — PASS.
+- **CONFIRMED:** `git diff -- web/src/lib/api.ts web/src/lib/store.ts` — empty; no dependency, backend, or protected key changes.
+
+### Acceptance and verification
+
+- **CONFIRMED by source/tests:** touch short press remains locked and shows unlock guidance; a one-second hold unlocks; the hold ring reports clamped progress; the visible handle has a rightward cue and a low-opacity hint; successful right drags give action feedback while retaining lock state; cancel/release/lost-capture/unmount reset the transient state.
+- **CONFIRMED by diff:** lock rendering remains gated by the phone player path; TV/PC/tablet controls and behavior are unchanged. No live website/VPS claim is made.
+- **VERIFY ON DEVICE:** Phone portrait/landscape/fullscreen touch: short press guidance, one-second ring/unlock, right-drag travel/threshold pulse, pause/play notice, handle auto-hide, and cancellation/reset behavior.
+- **VERIFY ON TV:** None; TV behavior was not changed or tested on hardware.
+- **VERIFY ON VPS:** None; this is a phone-only client UX change with no backend contract change.
+- **CONFIRMED:** No task-scope deviation and no tests deleted. `PROGRESS.md` Current Task remains T13.10.
