@@ -58,18 +58,19 @@ import { TelegramFile, formatDuration, useUpdateProgress, useFile, api } from '.
 import { useAppStore } from '../lib/store';
 import { getDeviceKind } from '../lib/device';
 import {
-    computePseudoLandscape,
     isPhonePlayer,
-    lockLandscape,
     resolveSurfaceTap,
+    shouldUseWebkitFullscreenFallback,
     sliderRatio,
-    shouldAutoLandscape,
-    unlockLandscape,
 } from '../lib/mobilePlayer';
 
 /* ═══════════════════════════ Types & constants ═══════════════════════════ */
 
 interface Rendition { label?: string; height: number; file_id: number }
+type WebkitVideoElement = HTMLVideoElement & {
+    webkitEnterFullscreen?: () => void;
+    webkitExitFullscreen?: () => void;
+};
 interface AudioTrackMeta { index: number; label?: string; language?: string; codec?: string; default?: boolean }
 interface SubtitleTrack { lang: string; label: string; url: string }
 
@@ -139,11 +140,6 @@ const PLAYER_CSS = `
 [data-hp-root] [data-hp-wrap]{pointer-events:none;}
 [data-hp-root] [data-hp-wrap][data-on="1"] button,
 [data-hp-root] [data-hp-wrap][data-on="1"] [role="slider"]{pointer-events:auto;}
-[data-hp-root] [data-hp-stage][data-hp-pseudo-landscape="true"]{
-position:fixed!important;inset:50% auto auto 50%!important;width:100vh!important;height:100vw!important;
-transform:translate(-50%,-50%) rotate(90deg)!important;transform-origin:center;
-}
-
 .hp-scroll{scrollbar-width:thin;scrollbar-color:#115e59 #0e1514;}
 .hp-scroll::-webkit-scrollbar{width:10px;}
 .hp-scroll::-webkit-scrollbar-track{background:#0e1514;border-radius:8px;}
@@ -189,11 +185,6 @@ const resolveApiUrl = (path: string): string => {
     const origin = /^https?:\/\//i.test(base) ? new URL(base).origin : window.location.origin;
     return new URL(path, origin).href;
 };
-
-function isPortraitViewport(): boolean {
-    return typeof window !== 'undefined'
-        && (window.matchMedia?.('(orientation: portrait)').matches ?? window.innerHeight > window.innerWidth);
-}
 
 function getDeviceId(): string {
     try {
@@ -623,7 +614,7 @@ function HearthMark() {
 }
 
 /** Memoized: icon is passed as a component reference so props stay referentially stable between renders. */
-const IconBtn = memo(function IconBtn({ label, onClick, icon: Icon, iconClass = 'h-5 w-5', refEl, active = false, badge = false, className = '' }: {
+const IconBtn = memo(function IconBtn({ label, onClick, icon: Icon, iconClass = 'h-5 w-5', refEl, active = false, badge = false, compact = false, className = '' }: {
     label: string;
     onClick: (e: ReactMouseEvent<HTMLButtonElement>) => void;
     icon: IconType;
@@ -631,12 +622,13 @@ const IconBtn = memo(function IconBtn({ label, onClick, icon: Icon, iconClass = 
     refEl?: Ref<HTMLButtonElement>;
     active?: boolean;
     badge?: boolean;
+    compact?: boolean;
     className?: string;
 }) {
     return (
         <button
             type="button" ref={refEl} aria-label={label} title={label} onClick={onClick}
-            className={`hp-focus relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-[background-color,color,transform] duration-150 active:scale-90 ${
+            className={`hp-focus relative inline-flex ${compact ? 'h-10 w-10 sm:h-11 sm:w-11' : 'h-11 w-11'} shrink-0 items-center justify-center rounded-xl transition-[background-color,color,transform] duration-150 active:scale-90 ${
                 active ? 'bg-[#2dd4bf]/20 text-[#5eead4]' : 'text-[#e8f1ef]/85 hover:bg-white/10 hover:text-white'
             } ${className}`}
         >
@@ -732,9 +724,8 @@ const SeekFlash = memo(function SeekFlash({ store }: { store: Store<FlashState |
 
 /* ═══════════════════════════ Scrubber ═══════════════════════════ */
 
-const Scrubber = memo(function Scrubber({ duration, secStore, disabled, rotated, fillRef, bufRef, thumbRef, scrubberRef, onSeek, onDragState }: {
+const Scrubber = memo(function Scrubber({ duration, secStore, disabled, fillRef, bufRef, thumbRef, scrubberRef, onSeek, onDragState }: {
     duration: number; secStore: Store<number>; disabled?: boolean;
-    rotated?: boolean;
     fillRef: MutableRef<HTMLDivElement>; bufRef: MutableRef<HTMLDivElement>; thumbRef: MutableRef<HTMLDivElement>;
     scrubberRef: MutableRef<HTMLDivElement>;
     onSeek: (t: number) => void; onDragState: (dragging: boolean) => void;
@@ -747,7 +738,7 @@ const Scrubber = memo(function Scrubber({ duration, secStore, disabled, rotated,
     const ratioAt = (clientX: number, clientY: number) => {
         const r = trackRef.current?.getBoundingClientRect();
         if (!r) return 0;
-        return sliderRatio(r, clientX, clientY, !!rotated);
+        return sliderRatio(r, clientX, clientY, false);
     };
     const paint = (t: number) => {
         const r = duration > 0 ? clamp(t / duration, 0, 1) : 0;
@@ -1177,6 +1168,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const [controlsVisible, setControlsVisible] = useState(true);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isWebkitFullscreen, setIsWebkitFullscreen] = useState(false);
     const [isPiP, setIsPiP] = useState(false);
     const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
     const [resumeToast, setResumeToast] = useState(false);
@@ -1186,19 +1178,15 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const [kickBusy, setKickBusy] = useState<string | null>(null);
     const [preparing, setPreparing] = useState(false);
     const [fsSupported] = useState(() => typeof document !== 'undefined' && !!document.fullscreenEnabled);
+    const [webkitFullscreenSupported, setWebkitFullscreenSupported] = useState(false);
     const [pipSupported] = useState(() => typeof document !== 'undefined' && !!document.pictureInPictureEnabled);
     const [videoMounted, setVideoMounted] = useState(false);
-    const [isPortrait, setIsPortrait] = useState(() => phonePlayer && isPortraitViewport());
-    const [pseudoLandscapeEnabled, setPseudoLandscapeEnabled] = useState(false);
-    const [nativeLandscapeUnsupported, setNativeLandscapeUnsupported] = useState(false);
-    const [showRotateHint, setShowRotateHint] = useState(false);
     const [secStore] = useState<Store<number>>(() => createStore(0));
     const [flashStore] = useState<Store<FlashState | null>>(() => createStore<FlashState | null>(null));
 
     /* ── Refs ── */
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const stageRef = useRef<HTMLDivElement>(null);
     const ctlWrapRef = useRef<HTMLDivElement>(null);
     const topRef = useRef<HTMLDivElement>(null);
     const barRef = useRef<HTMLDivElement>(null);
@@ -1244,11 +1232,6 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const prefsRef = useRef(prefs);
     const mediaErrorRef = useRef<string | null>(null);
     const keyHandlerRef = useRef<((e: KeyboardEvent) => void) | null>(null);
-    const landscapeAttemptedRef = useRef(false);
-    const landscapeRequestIdRef = useRef(0);
-    const rotateHintShownRef = useRef(false);
-    const isMinimizedRef = useRef(isMinimized);
-    const phonePlayerMountedRef = useRef(false);
 
     const isPaused = useCallback(() => videoRef.current?.paused ?? true, []);
     const { phase, src, mode, active, error: sessionError, retry } =
@@ -1262,41 +1245,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     dialogOpenRef.current = dialogOpen;
     prefsRef.current = prefs;
     mediaErrorRef.current = mediaError;
-    isMinimizedRef.current = isMinimized;
     durationRef.current = duration || details.duration || 0;
-
-    useEffect(() => {
-        if (!phonePlayer) return;
-        const updateOrientation = () => {
-            const portrait = isPortraitViewport();
-            setIsPortrait(portrait);
-            if (!portrait) setShowRotateHint(false);
-        };
-        updateOrientation();
-        window.addEventListener('orientationchange', updateOrientation);
-        window.addEventListener('resize', updateOrientation);
-        return () => {
-            window.removeEventListener('orientationchange', updateOrientation);
-            window.removeEventListener('resize', updateOrientation);
-        };
-    }, [phonePlayer]);
-
-    useEffect(() => {
-        if (!phonePlayer || !showRotateHint) return;
-        const timer = setTimeout(() => setShowRotateHint(false), 4500);
-        return () => clearTimeout(timer);
-    }, [phonePlayer, showRotateHint]);
-
-    useEffect(() => {
-        if (!phonePlayer) return;
-        phonePlayerMountedRef.current = true;
-        return () => {
-            phonePlayerMountedRef.current = false;
-            if (isPhonePlayer()) {
-                unlockLandscape();
-            }
-        };
-    }, [phonePlayer]);
 
     const computeResume = (f: PlayerFile) => {
         const pos = f.last_pos ?? 0;
@@ -1313,6 +1262,29 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     useEffect(() => {
         if (src) setVideoMounted(true);
     }, [src]);
+
+    useEffect(() => {
+        const video = videoRef.current as WebkitVideoElement | null;
+        const supportsFallback = shouldUseWebkitFullscreenFallback(
+            isPhonePlayer(),
+            fsSupported,
+            isVideo && !!video && typeof video.webkitEnterFullscreen === 'function',
+        );
+        setWebkitFullscreenSupported(supportsFallback);
+        if (!supportsFallback || !video) {
+            setIsWebkitFullscreen(false);
+            return;
+        }
+
+        const onBeginFullscreen = () => setIsWebkitFullscreen(true);
+        const onEndFullscreen = () => setIsWebkitFullscreen(false);
+        video.addEventListener('webkitbeginfullscreen', onBeginFullscreen);
+        video.addEventListener('webkitendfullscreen', onEndFullscreen);
+        return () => {
+            video.removeEventListener('webkitbeginfullscreen', onBeginFullscreen);
+            video.removeEventListener('webkitendfullscreen', onEndFullscreen);
+        };
+    }, [fsSupported, isVideo, videoMounted]);
 
     /* ── Toasts ── */
     const pushToast = useCallback((msg: string, kind: ToastKind = 'info') => {
@@ -1414,53 +1386,15 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     };
 
     /* ── Transport ── */
-    const requestLandscapeOnPlay = useCallback(() => {
-        if (!isPhonePlayer()
-            || !shouldAutoLandscape(isVideo, playerKind, isPortrait)
-            || isMinimizedRef.current
-            || landscapeAttemptedRef.current) return;
-        const stage = stageRef.current;
-        if (!stage) return;
-
-        landscapeAttemptedRef.current = true;
-        const requestId = ++landscapeRequestIdRef.current;
-        void lockLandscape(stage).then(locked => {
-            if (requestId !== landscapeRequestIdRef.current
-                || !phonePlayerMountedRef.current
-                || !isPhonePlayer()) return;
-            setNativeLandscapeUnsupported(!locked);
-            if (locked) {
-                setPseudoLandscapeEnabled(false);
-                return;
-            }
-            if (isMinimizedRef.current
-                || !shouldAutoLandscape(isVideo, getDeviceKind(), isPortraitViewport())) return;
-            setPseudoLandscapeEnabled(true);
-            if (!rotateHintShownRef.current) {
-                rotateHintShownRef.current = true;
-                setShowRotateHint(true);
-            }
-        });
-    }, [isVideo, isPortrait, playerKind]);
-
-    const releasePhoneLandscape = useCallback(() => {
-        if (!isPhonePlayer()) return;
-        landscapeRequestIdRef.current++;
-        landscapeAttemptedRef.current = false;
-        unlockLandscape();
-    }, []);
-
     const togglePlay = useCallback(() => {
         const v = videoRef.current;
         if (!v) return;
         if (v.paused || v.ended) {
-            requestLandscapeOnPlay();
             v.play().catch(() => { /* autoplay policy */ });
         }
         else v.pause();
-    }, [requestLandscapeOnPlay]);
+    }, []);
     const playMedia = () => {
-        requestLandscapeOnPlay();
         videoRef.current?.play().catch(() => { /* noop */ });
     };
     const pauseMedia = () => { videoRef.current?.pause(); };
@@ -1664,24 +1598,27 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     };
 
     /* ── Close / minimize / settings ── */
+    const exitFullscreen = useStableCallback(() => {
+        if (isPhonePlayer() && !fsSupported) {
+            const video = videoRef.current as WebkitVideoElement | null;
+            try { video?.webkitExitFullscreen?.(); } catch (error) {
+                console.error('WebKit video fullscreen exit failed:', error);
+            }
+            return;
+        }
+        try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ }); } catch { /* noop */ }
+    });
+
     const closePlayer = useStableCallback(() => {
         saveRef.current(true);
-        if (isPhonePlayer()) releasePhoneLandscape();
-        else {
-            try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ }); } catch { /* noop */ }
-        }
+        exitFullscreen();
         try { if (document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => { /* noop */ }); } catch { /* noop */ }
         onClose();
     });
 
     const minimize = useStableCallback(() => {
         setSettingsOpen(false);
-        setShowRotateHint(false);
-        setPseudoLandscapeEnabled(false);
-        if (isPhonePlayer()) releasePhoneLandscape();
-        else {
-            try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ }); } catch { /* noop */ }
-        }
+        exitFullscreen();
         setMinimized(true);
     });
     const expand = useStableCallback(() => setMinimized(false));
@@ -1755,14 +1692,26 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const onPrepare = useStableCallback(() => { void prepareRenditions(); });
 
     /* ── Fullscreen / PiP ── */
-    const toggleFullscreen = useCallback(() => {
+    const toggleFullscreen = useStableCallback(() => {
+        if (isPhonePlayer() && !fsSupported) {
+            const video = videoRef.current as WebkitVideoElement | null;
+            if (!video) return;
+            if (isWebkitFullscreen) {
+                exitFullscreen();
+                return;
+            }
+            try { video.webkitEnterFullscreen?.(); } catch (error) {
+                console.error('WebKit video fullscreen entry failed:', error);
+            }
+            return;
+        }
         const el = containerRef.current;
         if (!el) return;
         try {
             if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* noop */ });
             else if (el.requestFullscreen) void el.requestFullscreen().catch(() => { /* noop */ });
         } catch { /* TV browsers without the API */ }
-    }, []);
+    });
 
     useEffect(() => {
         const h = () => setIsFullscreen(!!document.fullscreenElement);
@@ -1847,7 +1796,6 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         if (v) {
             restartAt(lastPosRef.current > 1 ? lastPosRef.current : (resumePointRef.current ?? 0));
             v.load();
-            requestLandscapeOnPlay();
             v.play().catch(() => { /* noop */ });
         }
     };
@@ -2241,13 +2189,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
 
     const currentAudio = audioIndex ?? (serverAudio.find(t => t.default)?.index ?? 0);
     const showCtl = effectiveShow;
-    const pseudoLandscape = phonePlayer && computePseudoLandscape(
-        playerKind,
-        isPortrait,
-        pseudoLandscapeEnabled,
-        isVideo,
-        isMinimized,
-    );
+    const phoneWebkitFullscreen = !fsSupported && webkitFullscreenSupported && isPhonePlayer();
 
     /* ═══════════════════════════════ Render ═══════════════════════════════ */
 
@@ -2276,9 +2218,6 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
 
             {/* The stage stays mounted while minimized (collapsed to 1px) so the <video> keeps playing in the mini bar. */}
             <div
-                ref={stageRef}
-                data-hp-stage
-                data-hp-pseudo-landscape={pseudoLandscape ? 'true' : undefined}
                 className={isMinimized ? 'pointer-events-none absolute left-0 top-0 h-px w-px overflow-hidden opacity-0' : 'absolute inset-0'}
                 aria-hidden={isMinimized || undefined}
             >
@@ -2302,7 +2241,6 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                         }}
                         onDoubleClick={fsSupported && !phonePlayer ? toggleFullscreen : undefined}
                         onPlay={() => {
-                            requestLandscapeOnPlay();
                             setPlaying(true);
                             setFinished(false);
                             revealControls();
@@ -2347,31 +2285,6 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                             />
                         ))}
                     </video>
-                )}
-
-                {phonePlayer && isVideo && nativeLandscapeUnsupported && isPortrait && !isMinimized && (
-                    <button
-                        type="button"
-                        data-hp-controls
-                        aria-pressed={pseudoLandscapeEnabled}
-                        aria-label={pseudoLandscapeEnabled ? 'Use portrait view' : 'Use landscape view'}
-                        onClick={() => {
-                            setShowRotateHint(false);
-                            setPseudoLandscapeEnabled(enabled => !enabled);
-                        }}
-                        className="hp-focus absolute right-4 top-20 z-[110] rounded-full border border-white/20 bg-black/70 px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
-                    >
-                        {pseudoLandscapeEnabled ? 'Portrait view' : 'Landscape view'}
-                    </button>
-                )}
-
-                {phonePlayer && showRotateHint && pseudoLandscape && (
-                    <div
-                        role="status"
-                        className="pointer-events-none absolute left-1/2 top-1/4 z-[110] -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-center text-xs font-semibold text-white shadow-lg"
-                    >
-                        Turn your phone sideways for the best view.
-                    </div>
                 )}
 
                 {videoMounted && !isVideo && (
@@ -2543,43 +2456,70 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                             className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-[3.5%] pt-12"
                             style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
                         >
-                            <div className="flex items-center gap-3 sm:gap-4">
-                                <span className="min-w-[52px] font-mono text-sm font-semibold text-white/90"><TimeText store={secStore} /></span>
+                            <div className={phonePlayer ? 'flex min-w-0 items-center gap-1 sm:gap-4' : 'flex items-center gap-3 sm:gap-4'}>
+                                <span className={phonePlayer
+                                    ? 'min-w-[44px] font-mono text-xs font-semibold text-white/90 sm:min-w-[52px] sm:text-sm'
+                                    : 'min-w-[52px] font-mono text-sm font-semibold text-white/90'}>
+                                    <TimeText store={secStore} />
+                                </span>
                                 <Scrubber
-                                    duration={duration} secStore={secStore} rotated={pseudoLandscape}
+                                    duration={duration} secStore={secStore}
                                     fillRef={fillRef} bufRef={bufRef} thumbRef={thumbRef} scrubberRef={scrubberRef}
                                     onSeek={seekTo} onDragState={onScrubDrag}
                                 />
-                                <span className="min-w-[52px] text-right font-mono text-sm font-semibold text-white/90">{fmtTime(duration)}</span>
+                                <span className={phonePlayer
+                                    ? 'min-w-[44px] text-right font-mono text-xs font-semibold text-white/90 sm:min-w-[52px] sm:text-sm'
+                                    : 'min-w-[52px] text-right font-mono text-sm font-semibold text-white/90'}>
+                                    {fmtTime(duration)}
+                                </span>
                             </div>
 
-                            <div ref={barRef} data-hp-bar className="mt-1 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1 sm:gap-1.5">
+                            <div
+                                ref={barRef}
+                                data-hp-bar
+                                className={phonePlayer
+                                    ? 'mt-1 flex min-w-0 flex-nowrap items-center justify-between gap-1 sm:gap-2'
+                                    : 'mt-1 flex items-center justify-between gap-2'}
+                            >
+                                <div className={phonePlayer
+                                    ? 'flex min-w-0 flex-nowrap items-center gap-0 sm:gap-1.5'
+                                    : 'flex items-center gap-1 sm:gap-1.5'}>
                                     <IconBtn
                                         label={playing ? 'Pause' : 'Play'} refEl={playBtnRef} onClick={togglePlay}
-                                        icon={playing ? Pause : Play} iconClass="h-6 w-6"
+                                        icon={playing ? Pause : Play}
+                                        iconClass={phonePlayer ? 'h-5 w-5 sm:h-6 sm:w-6' : 'h-6 w-6'}
+                                        compact={phonePlayer}
                                     />
-                                    <IconBtn label="Back 10 seconds" onClick={seekBack10} icon={Rewind} />
-                                    <IconBtn label="Forward 10 seconds" onClick={seekFwd10} icon={FastForward} />
+                                    <IconBtn label="Back 10 seconds" onClick={seekBack10} icon={Rewind} compact={phonePlayer} />
+                                    <IconBtn label="Forward 10 seconds" onClick={seekFwd10} icon={FastForward} compact={phonePlayer} />
                                 </div>
 
-                                <div className="flex items-center gap-1 sm:gap-1.5">
+                                <div className={phonePlayer
+                                    ? 'flex min-w-0 flex-nowrap items-center gap-0 sm:gap-1.5'
+                                    : 'flex items-center gap-1 sm:gap-1.5'}>
                                     {/* CROP — cycles fit → fill → stretch, sits left of the gear */}
                                     <IconBtn
                                         label={`Crop / aspect: ${ASPECT_META[prefs.aspect].label} — click to change`}
                                         refEl={cropBtnRef} onClick={cycleAspect} active={prefs.aspect !== 'fit'} icon={AspectIcon}
+                                        compact={phonePlayer}
                                     />
                                     <IconBtn
                                         label="Settings" refEl={settingsBtnRef} onClick={openSettings}
                                         active={settingsOpen || prefs.rate !== 1} badge={prefs.rate !== 1} icon={Settings}
+                                        compact={phonePlayer}
                                     />
                                     {pipSupported && isVideo && !IS_TV && (
-                                        <IconBtn label="Picture in picture" onClick={togglePiP} active={isPiP} icon={PictureInPicture2} />
-                                    )}
-                                    {fsSupported && (
                                         <IconBtn
-                                            label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} onClick={toggleFullscreen}
-                                            icon={isFullscreen ? Minimize : Maximize}
+                                            label="Picture in picture" onClick={togglePiP} active={isPiP} icon={PictureInPicture2}
+                                            compact={phonePlayer}
+                                        />
+                                    )}
+                                    {(fsSupported || phoneWebkitFullscreen) && (
+                                        <IconBtn
+                                            label={isFullscreen || isWebkitFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                                            onClick={toggleFullscreen}
+                                            icon={isFullscreen || isWebkitFullscreen ? Minimize : Maximize}
+                                            compact={phonePlayer}
                                         />
                                     )}
                                 </div>

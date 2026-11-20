@@ -641,3 +641,39 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **VERIFY ON VPS:** none; this is a client-only timeout change and does not alter server compatibility.
 - Deleted tests: **none**.
 - Documentation deviation: the T12.87 wording in `AUDIT_REPORT.md` and the T12.87 scope wording in `PLAN.md` no longer state a fixed old timeout; the T12.88 parity matrix now records the current 3-second behavior. This avoids preserving a stale current-state assumption while retaining the historical task context.
+
+## T13.4 — Phone portrait-first player and compact controls
+
+### Changes and scope — CONFIRMED
+
+- **CONFIRMED:** removed the phone auto-landscape flow and its pseudo-landscape CSS, orientation state/listeners, rotate hint, call sites, and child rotation prop. The `Scrubber` now always uses the unrotated `sliderRatio` path; the retained helper still supports both axes.
+- **CONFIRMED:** added phone-only compact bottom-bar buttons below `sm` (40px buttons, 20px icons, tighter group gaps, compact time labels); at and above `sm`, the previous button dimensions and spacing are preserved. Existing safe-area bottom padding remains.
+- **CONFIRMED:** added a phone-only WebKit video fullscreen fallback when standard fullscreen is unavailable and `webkitEnterFullscreen` exists. `webkitbeginfullscreen` / `webkitendfullscreen` update fullscreen state. The non-phone standard fullscreen path remains in use; the top-bar Mute, M key, volume preferences, and persistence remain.
+- **CONFIRMED:** PiP remains capability-gated as before. The seven-control count applies when the phone reports PiP support.
+- **CONFIRMED:** at 320px width, existing 3.5% side padding leaves 297.6px. Seven 40px controls plus a 4px gap between the two groups total 284px, leaving 13.6px. The seekbar/time row is above this button row.
+- Files changed: `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` was unchanged because its T13.4 card matched the implementation scope.
+
+### Removed tests — CONFIRMED
+
+- **CONFIRMED:** removed the parameterized `shouldAutoLandscape` test (16 cases: 4 device kinds × portrait/landscape × video/non-video).
+- **CONFIRMED:** removed `computePseudoLandscape` test “applies only to enabled portrait phone video outside mini mode” (64 cases) and test “uses CSS fallback only when native lock is unsupported” (64 cases).
+- **CONFIRMED:** removed the three native orientation-lock tests: “requests fullscreen before locking landscape,” “returns false when fullscreen and orientation locking are unsupported,” and “unlocks orientation and exits active fullscreen without throwing.”
+- **CONFIRMED:** 147 cases covering removed behavior were deleted; four cases for the new WebKit fallback predicate were added. Against the T13.1 frontend baseline of 178, the current suite is 35 tests (net reduction of 143, solely due to the authorized deletions and replacement coverage). No unrelated tests were removed.
+
+### Parity and verification — CONFIRMED / VERIFY
+
+- **CONFIRMED by source review:** compact sizing and spacing are conditional on `isPhonePlayer()`; TV/PC/tablet retain the non-compact class strings. The WebKit fullscreen predicate requires a phone and the standard fullscreen path is not changed for non-phone devices. `Scrubber` was previously unrotated on non-phone devices.
+- **CONFIRMED:** the fullscreen fallback catches now log WebKit entry/exit errors explicitly. No server/API, backend, dependency, DB, auth, stream-token, or deployment behavior changed.
+- **VERIFY ON DEVICE:** confirm phone video opens in portrait, all controls fit and are tappable at 320px, natural physical rotation works, and Android/iPhone fullscreen entry/exit works.
+- **VERIFY ON DEVICE:** confirm the PiP control is present on a PiP-capable phone; it remains absent when the existing capability check reports unsupported.
+- **VERIFY ON TV:** confirm TV layout and D-pad focus/navigation remain unchanged.
+- **VERIFY ON DEVICE:** confirm PC layout and standard fullscreen behavior remain unchanged.
+- **VERIFY ON VPS:** none required; this is a client-only change and the old-server contract is unchanged.
+
+### Gates — CONFIRMED
+
+- Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings**.
+- Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 35 tests passed**; `npm run build` — **PASS**; `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** backend count matches T13.1 (226). Frontend count is 35 versus 178 at T13.1, with the 147 authorized removed cases and four new fallback cases detailed above. `git diff --check` — **PASS**.
+- **CONFIRMED:** `MediaPlayer.tsx` hunks are limited to: T12.86 orientation/pseudo-landscape removal; keeping the scrubber unrotated; phone-only WebKit fullscreen detection, state/events, entry/exit calls and error logging; and phone-only compact button/time/group classes. No other `MediaPlayer.tsx` behavior was intentionally changed.
+- Deviations / findings: **none**. No live or physical-device checks were performed.
