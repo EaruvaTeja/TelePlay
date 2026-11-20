@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t12.90.2`
-* **Current Task:** `T12.91` — Stale bundle and VPS resource recovery (**ON HOLD**)
+* **Active Branch:** `hearth/t13.1`
+* **Current Task:** `T13.2` — Issue 1: remove bottom-bar volume cluster
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -45,11 +45,35 @@
 * [x] **T12.90** — Reliability hardening, banner replacement, and clean-checkout freeze candidate
 * [x] **T12.90.1** — Persistent auth-key failure threshold; close Finding B
 * [x] **T12.90.2** — OWNER-AUTHORIZED MediaPlayer exception #4: pseudo-landscape slider axis fix and final freeze gates
-* [ ] **T12.91** — Stale bundle and VPS resource recovery
-* [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R)
-* [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD; deployment paused pending T12.5 merge, owner smoke tests, and release re-freeze
-* [ ] **T15** — Real-World Hardware Acceptance (Phase R + runbook deploy + Samsung TV + 512MB VPS matrix; every P0 row PASS)
-* [ ] **T16** — Launch & 72-Hour Observation (GO/NO-GO, family invites, monitoring, Master Review MD → GO, tag `v1.0`) — NEW 2026-11-19
+* [x] **T13.1** — Phase authorization and docs re-baseline (docs only)
+* [ ] **T13.2** — Issue 1: remove bottom-bar volume cluster (all devices)
+* [ ] **T13.3** — Issue 7: controls auto-hide 4s to 3s (all devices)
+* [ ] **T13.4** — Issue 2: phone portrait-first player and compact controls
+* [ ] **T13.5** — Issue 3: glass center play/pause button (visual only)
+* [ ] **T13.6** — Issue 4: phone brightness/volume drag gestures and indicator
+* [ ] **T13.7** — Issue 5: TV/PC/tablet side controls and D-pad navigation
+* [ ] **T13.8** — Issue 8: phone control lock with drag-to-pause/play
+* [ ] **T13.9** — Issue 6a: household playback count endpoint
+* [ ] **T13.10** — Issue 6b: home live-devices chip, popup text, and flow verification
+* [ ] **T13.11** — Final freeze gates, RC candidate, and deploy handoff (docs only)
+* [ ] **T12.91** — Stale bundle and VPS resource recovery — ON HOLD
+* [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R) — ON HOLD
+* [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD
+* [ ] **T15** — Real-World Hardware Acceptance (Phase R + runbook deploy + Samsung TV + 512MB VPS matrix; every P0 row PASS) — ON HOLD
+* [ ] **T16** — Launch & 72-Hour Observation (GO/NO-GO, family invites, monitoring, Master Review MD → GO, tag `v1.0`) — ON HOLD; NEW 2026-11-19
+
+### T13 execution map and dependencies
+
+The bare **T13 Deployment Kit** is already complete; this phase is the T13.x sequence below.
+
+| Workstream | Dependency / order |
+|---|---|
+| Player controls | T13.2 → T13.4 → T13.6 → T13.7 → T13.8 |
+| Playback count | T13.9 → T13.10 |
+| Independent player changes | T13.3 and T13.5 are independent of the player-controls chain |
+| Phase closeout | T13.11 follows completion of T13.2–T13.10 |
+
+T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 
 ---
 
@@ -136,6 +160,7 @@
 * `2026-11-20 | T12.90 | backend 221 passed (61 warnings), compileall and pip check; frontend lint/typecheck and 170 tests/build passed; prod npm audit 0, pip-audit findings recorded; banner replaced and verified`
 * `2026-11-20 | T12.90.1 | backend 226 passed (61 warnings), compileall and pip check; focused auth-key tests 13 passed; frontend lint/typecheck and 170 tests/build passed; prod npm audit 0`
 * `2026-11-20 | T12.90.2 | gate passed: clean-checkout pytest 226 (61 warnings), compileall, pip check; pip-audit 22 advisory rows recorded; Node 20.20.2/npm 10.8.2 lint/typecheck and 178 frontend tests/build passed; npm audit production 0`
+* `2026-11-20 | T13.1 | baseline gates passed: 226 backend tests (61 warnings); 178 frontend tests; lint 0 warnings; production npm audit 0; build and dist/_redirects passed`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 
