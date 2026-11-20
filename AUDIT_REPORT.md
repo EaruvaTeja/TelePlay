@@ -956,3 +956,82 @@ The existing `handleBack` closes settings first; closes the player if a dialog i
 - **VERIFY ON TV:** Verify desktop “N watching” text/colors and that remote focus order is unchanged; exercise the third-device dialog and admin Stop with the TV client.
 - **VERIFY ON VPS:** Verify guest/family `GET /api/playback/count` returns only `{active, limit}` after deployment; before deployment, verify the old server's 404/405 leaves the chip hidden without UI/console errors. No VPS request was made.
 - **CONFIRMED:** Deviations: none. Tests deleted: none. No PR was created and no tag was pushed.
+
+## T13.11 — Final freeze gates, RC candidate, and deploy handoff
+
+### Scope and RC candidate — CONFIRMED
+
+- **CONFIRMED:** Work was based on latest `main`, commit `c7d82f53f28fb823c79fb047aec4794fd63a84ba`, tree `ca77f9ac70da58a4fa152e8a27d24268be3005f6`. A fresh clone of that commit was used for every gate below.
+- **CONFIRMED:** The code candidate is the clean-checkout `main` commit above. The owner tags the final merged T13.11 commit on `main`; the final merge SHA may differ. No T13.11 tag or PR was created.
+- **CONFIRMED:** T13.11 changes are documentation-only: `HANDOFF.md`, `PROGRESS.md`, `AUDIT_REPORT.md`, and the owner-approved rewrite of `docs/RELEASING.md`. `PLAN.md` was not changed because its T13.11 entry already matched the work. No test was deleted.
+- **CONFIRMED:** Exception #5 is closed and re-frozen: #5.1–#5.8, including #5.7.1 and #5.7.2, are complete. No T13.11 MediaPlayer exception was used; `MediaPlayer.tsx` remains unchanged by this task.
+
+### Clean-checkout gates — CONFIRMED
+
+- **CONFIRMED:** Fresh clone `c7d82f53f28fb823c79fb047aec4794fd63a84ba`; fresh Python **3.13.0** virtual environment. `python -m compileall -q app` — **PASS**; `pip check` — **PASS**; full `pytest -q` — **230 passed, 61 warnings**.
+- **CONFIRMED:** Node **20.20.2** / npm **10.8.2**. `npm ci` — **PASS**, 447 packages installed; the complete dependency tree reports 24 advisories (1 low, 6 moderate, 15 high, 2 critical). `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 88 tests passed**.
+- **CONFIRMED:** `npm run build` — **PASS**, 1,530 modules transformed; `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** Test counts meet the requested final totals: backend **230** (T13.1 baseline 226); frontend **88**, comprising 78 before T13.10 plus its 10 tests. The T13.1 frontend baseline was 178; the 147 T13.4 removals and four replacement tests, plus subsequent additions through T13.8.2, are already documented in the earlier task sections. T13.11 deleted no tests.
+- **CONFIRMED:** No physical device, TV, or VPS gate was run.
+
+### Cumulative `MediaPlayer.tsx` diff review — CONFIRMED
+
+Reviewed the cumulative diff from `a910a72cb29e975b93febc7eb7d2783c952305d` to the T13.11 code candidate line by line. It is **53 hunks**, **1,002 insertions / 250 deletions** (`web/src/components/MediaPlayer.tsx`). The task diff for this file is empty. The hunk groups and their authorizing sub-scopes are:
+
+| Cumulative diff hunk IDs | Changed behavior | Authorizing sub-scope |
+|---|---|---|
+| 8, 14, 28, 52 | Bottom-bar volume cluster, slider-only helpers/references, and related focus/volume-bar removal | #5.1 |
+| 1, 4, 23 | Shared controls auto-hide constant and duration wording changed to 3 seconds | #5.2 |
+| 2, 5, 6, 9, 10, 12, 13, 17, 19–22, 29–31, 41, 43, 52 | Phone portrait-first / compact-control conditionals, removal of phone auto/pseudo-landscape code, rotated scrubber cleanup, and phone WebKit fullscreen fallback | #5.3 |
+| 47, 49 | Center Play/Pause button glass class changes only | #5.4 |
+| 2, 3, 4, 7, 11, 18, 27, 33, 39, 42, 44, 45 | Phone brightness/volume drag state and handlers, additive brightness preference, device-volume capability handling, and transient gesture indicator | #5.5 |
+| 2, 3, 11, 17, 26, 36, 37, 45, 52 | Non-phone brightness/volume side clusters, brightness overlay, cluster focus/activation, and D-pad/bar-end navigation additions | #5.6 |
+| 2, 3, 16–20, 24, 25, 32, 34, 35, 38–40, 44, 45, 48, 52 | Phone lock state, locked-surface/Back handling, handle lifecycle, pointer safeguards, locked gesture gating, and auto-unlock/reset paths | #5.7 |
+| 2, 3, 18, 24, 34, 39, 45 | Hold-to-unlock progress ring/timing, clearer unlock and drag hints, and right-drag feedback | #5.7.1 |
+| 2, 3, 18, 24, 39, 40, 45, 46, 50, 51, 53 | State-aware Pause/Play icon, right-drag progress dot, compact lock notice copy, and related accessible descriptions | #5.7.2 |
+| 15 | `DeviceLimitDialog` title/body copy only | #5.8 |
+
+- **CONFIRMED:** Every cumulative hunk maps to one or more listed scopes; no out-of-scope MediaPlayer hunk was found. The T13.10 #5.8 hunk changes only the title/body copy; it does not change dialog logic, props, hooks, layout, or device actions.
+- **CONFIRMED:** The T13.7 keymap matrix above still holds for existing contexts. Arrow-key additions remain limited to the two T13.7 bar-end routes and the new side clusters; side-cluster Up/Down and activation are scoped to those controls. Existing j/J and l/L, media keys, Escape/Back, Home/End, mute/fullscreen/aspect, rate keys, 0–9 seeking, Tab behavior, and browser-shortcut guards remain unchanged. The T13.8 locked-Back interception is phone-only.
+- **CONFIRMED — intentional TV/PC changes only:** bottom-bar volume cluster removal (#5.1); shared 3-second auto-hide (#5.2); glass center Play/Pause button (#5.4); side controls and bar-end/D-pad navigation (#5.6); DeviceLimitDialog text (#5.8).
+- **CONFIRMED:** Phone-only sub-scopes #5.3, #5.5, #5.7, #5.7.1, and #5.7.2 do not enable a TV/PC/tablet path.
+
+### Protected-path, security, and rollback checks — CONFIRMED
+
+- **CONFIRMED:** `git diff a910a72cb29e975b93febc7eb7d2783c952305d..HEAD` has no change to `deploy/`, `backend/app/auth.py`, `backend/app/routers/auth.py`, `backend/app/streaming.py`, `backend/app/routers/streaming.py`, `backend/app/byte_cache.py`, `backend/app/playback.py`, the model/database files, or `backend/app/bot.py`. The auth-before-cache path in `backend/app/routers/streaming.py` and `backend/app/byte_cache.py`, and the playback limiter, are unchanged from the deployed baseline. The `backend/app/routers/playback.py` delta is the previously completed T13.9 count endpoint.
+- **CONFIRMED:** No dependency manifest changed (`web/package.json`, `web/package-lock.json`, backend requirements), and no database model/migration changed. `backend/app/schemas.py` contains the already completed T13.9 API response model, not a database schema change. Rollback to `deploy-T12.90.2-rc` requires no schema reversal or dependency reinstall.
+- **CONFIRMED:** The tracked-file credential/token-pattern scan found no matches. `.env.example` is the only tracked environment-file candidate; it contains the documented blank template, not runtime credentials.
+- **CONFIRMED:** The cumulative `web/public/logo.png` change is the previously approved T12.90 owner-supplied banner; it is not a T13.11 change. Other code/API deltas are from the already completed T13.9/T13.10 scope. No PR was created and no tag was pushed.
+- **CONFIRMED by source/tests:** The T13.10 hook treats 404/405 as feature-unavailable and the chip renders nothing, preserving compatibility with the old server. Actual old-server behavior remains **VERIFY ON DEVICE / VERIFY ON VPS**.
+
+### Consolidated remaining verification — owner
+
+**VERIFY ON DEVICE (phone, PC, tablet)**
+
+- **T13.2–T13.3:** On phone, verify the removed bottom-bar volume controls leave a usable layout and controls hide after 3 seconds while playing without breaking paused/settings/dialog/scrubbing behavior. On PC, verify the same timeout and unchanged layout.
+- **T13.4:** On phone, verify portrait launch, controls fit and are tappable at 320px, natural rotation, Android/iPhone fullscreen entry/exit, and PiP on supported phones only. On PC, verify the existing layout/fullscreen behavior.
+- **T13.5:** Check center Play/Pause readability and focus treatment over both dark and bright frames; verify the phone playing-state Pause and PC paused-center appearance.
+- **T13.6:** On phone, test left/right drag behavior, 10% brightness floor, volume mute/unmute at zero, indicator fade/placement, tap suppression and Scrubber/control exclusions, portrait/physical landscape/fullscreen, and the iPhone device-volume hint/fallback.
+- **T13.7:** Verify PC mouse behavior and tablet controls/touch behavior.
+- **T13.8:** Verify phone lock placement, handle, tap/drag thresholds, pause/play while locked, auto-hide/permanent-paused handle, brightness/volume blocking, error/dialog unlock, and close/reopen reset.
+- **T13.8.1:** Verify portrait/landscape/fullscreen short-press guidance, one-second hold ring/unlock, right-drag feedback/threshold pulse, pause/play notice, handle auto-hide, and cancellation/reset.
+- **T13.8.2:** Verify the lock icon follows actual playing/paused state, stationary hold keeps the icon and ring, valid right drag moves the dot to its 32px threshold and toggles playback, invalid/left/vertical drags do not toggle, cancellation resets, and notices remain readable without clipping. Recheck keyboard unlock and phone brightness/volume gestures.
+- **T13.10:** Verify the chip hides on an old server; on the new server it shows phone `N/limit` using the server limit, with 1 green and 2 orange. With two devices playing, verify a third attempt shows the limit dialog, admin Stop frees a slot, and closing a player releases it or it expires within about 75 seconds.
+
+**VERIFY ON TV**
+
+- **T13.2–T13.3:** Confirm remaining bottom-bar remote navigation has no dead stop, top-bar Mute remains available, and 3-second auto-hide is usable with D-pad navigation. Decide whether dedicated MediaFastForward/MediaRewind keys should re-arm the timer; that special-key behavior predates T13.3 and was left unchanged.
+- **T13.4–T13.6:** Confirm TV layout/focus and existing controls remain unchanged; assess the glass center button's legibility and focus ring; confirm brightness/volume gestures did not affect TV behavior.
+- **T13.7:** Verify Samsung Tizen key delivery, focus rings, side-cluster reachability, both bar-end routes, held-OK ramping, and side-button indicator behavior.
+- **T13.8–T13.8.2:** Confirm phone lock UX changes are absent and existing TV controls/key mapping remain unchanged.
+- **T13.10:** Verify desktop “N watching” chip text/colors without changing remote focus order; exercise the third-device dialog and admin Stop.
+
+**VERIFY ON VPS**
+
+- **T13.9:** After deployment, verify authenticated guest and family `GET /api/playback/count` responses contain only `{active, limit}`; unauthenticated access returns 401.
+- **T13.10:** Before deployment, verify old-server 404/405 keeps the chip hidden without UI/console errors. After deployment, verify the count endpoint response and device-limit flow.
+- **T13.2–T13.8.2:** No VPS checks were required for these web-only client scopes.
+
+### Deviations and findings
+
+- **CONFIRMED:** No deviations or out-of-scope cumulative MediaPlayer hunks found. Tests deleted in T13.11: none. Physical device, TV, and VPS verifications remain open as listed above.

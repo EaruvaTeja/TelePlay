@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t13.10`
-* **Current Task:** `T13.11` — Final freeze gates, RC candidate, and deploy handoff
+* **Active Branch:** `hearth/t13.11`
+* **Current Task:** `OWNER deploy step`
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -27,11 +27,11 @@
 * [x] **T12.1** — Pre-deploy Audit & Surgical Workflow Fixes (`main.py` sync gate, `bot.py` sync guard + `/help`, `gate4_check.py`, `smoke_db.py`, tests, `AUDIT_REPORT.md`) — NEW 2026-11-19
 * [x] **T13** — Production Deployment Kit & Runbooks (`deploy/hearth.service`, `deploy/Caddyfile`, `deploy/backup-neon.sh`, `deploy/duckdns-update.sh`, `deploy/README.md`, `README.md`, historical doc banners)
 * [x] **T14** — Comprehensive Test Suite & Final Hygiene (fresh clean-checkout gates, advisory review, hygiene greps, evidence, tag `v1.0-rc` → RELEASE_SHA)
-* [ ] **T12.2** — Local-validation fixes (batch-delete JSONResponse + regression test; uvicorn `--no-access-log`; runbook note)
-* [ ] **T12.3** — Login message polish, 10 playback speeds (owner-authorized MediaPlayer exception), DB-outage 503
-* [ ] **T12.4** — DB-wake upload UX + server status button + frontend 503 guidance + stream producer cleanup
-* [ ] **T12.4.1** — Frontend production dependency patch (axios / follow-redirects / form-data; production audit 3 → 0)
-* [ ] **T12.5** — IPv6-only VPS Telegram connectivity (`ipv6=True` in Pyrogram `create_client`)
+* [x] **T12.2** — Local-validation fixes (batch-delete JSONResponse + regression test; uvicorn `--no-access-log`; runbook note)
+* [x] **T12.3** — Login message polish, 10 playback speeds (owner-authorized MediaPlayer exception), DB-outage 503
+* [x] **T12.4** — DB-wake upload UX + server status button + frontend 503 guidance + stream producer cleanup
+* [x] **T12.4.1** — Frontend production dependency patch (axios / follow-redirects / form-data; production audit 3 → 0)
+* [x] **T12.5** — IPv6-only VPS Telegram connectivity (`ipv6=True` in Pyrogram `create_client`)
 * [x] **T12.80** — Post-incident docs re-baseline, F-01/F-02 re-opened, mobile exceptions authorized
 * [x] **T12.81** — Enforce family stream-token revocation (version claim, User.id binding, active membership)
 * [x] **T12.82** — `family_members.active` is the live bot/API family authorization authority
@@ -57,7 +57,7 @@
 * [x] **T13.8.2** — OWNER-AUTHORIZED Exception #5.7.2: phone lock state icons, drag dot, and notice copy
 * [x] **T13.9** — Issue 6a: household playback count endpoint
 * [x] **T13.10** — Issue 6b: home live-devices chip, popup text, and flow verification
-* [ ] **T13.11** — Final freeze gates, RC candidate, and deploy handoff (docs only)
+* [x] **T13.11** — Final freeze gates, RC candidate, and deploy handoff (docs only)
 * [ ] **T12.91** — Stale bundle and VPS resource recovery — ON HOLD
 * [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R) — ON HOLD
 * [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD
@@ -87,6 +87,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * **T12.90 banner:** **CONFIRMED** source/destination SHA-256 match; tracked blob and final commit inclusion are checked before handoff.
 * **Finding B — CONFIRMED CLOSED IN CODE by T12.90.1:** per-client auth-key failures must reach 3 within 60 seconds before quarantine; successful lookup/chunk delivery clears the counter. **VERIFY ON VPS:** live transient recovery and the persistent-failure operator workflow.
 * **T12.90.2 freeze candidate — CONFIRMED:** clean-checkout snapshot SHA `81c41f02c40b60620a9f5c84484f53177af99c72`, tree `fbfe33b3f77f0a2a7980b65e7c0c8eb3d530f5ba`, based on latest `main` `f1f656375f88990332fe3078e70a8e893860085d`; supersedes `e9f1704`. Gate evidence append changed documentation only; tested implementation/tests remain identical. **VERIFY ON DEVICE:** iPhone pseudo-landscape seek/volume drags, orientation exit, Android native lock.
+* **T13.11 RC code candidate — CONFIRMED:** clean-checkout gates ran against `main` commit `c7d82f53f28fb823c79fb047aec4794fd63a84ba`, tree `ca77f9ac70da58a4fa152e8a27d24268be3005f6`; 230 backend tests and 88 frontend tests passed. The owner tags the merged T13.11 commit on `main`; this candidate is not the final tag target if merge creates a different commit.
 * **ON HOLD:** T12.91, T0-R, T12.92, T15-R, and T16-R; deployment/release remains NO-GO pending owner authorization and required VPS evidence.
 * **F-01 — CONFIRMED CLOSED IN CODE by T12.81:** family stream version, `User.id` identity, and active membership checks are enforced before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs.
 * **F-02 — CONFIRMED CLOSED IN CODE by T12.82:** `family_members.active` governs bot/API authorization and verify-code for existing users; `AUTH_USERS` is only a DB-connectivity bootstrap fallback. **VERIFY ON VPS:** live membership add/remove, verify-code, and DB-wake recovery.
@@ -174,6 +175,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * `2026-11-20 | T13.8.1 | gate passed: Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 78 frontend tests; build (1,529 modules) and dist/_redirects; no backend changes; Current Task remains T13.10`
 * `2026-11-20 | T13.8.2 | gate passed: Node 20.20.2/npm 10.8.2 npm ci; focused 64 and full 78 frontend tests (baseline unchanged); lint 0 warnings/typecheck/build (1,529 modules); dist/_redirects present; Current Task remains T13.10`
 * `2026-11-20 | T13.10 | gate passed: pytest 230 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 npm ci; lint 0 warnings/typecheck; 88 frontend tests; build (1,530 modules) and dist/_redirects; production audit 0`
+* `2026-11-20 | T13.11 | clean-checkout gates passed: 230 backend tests; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 88 frontend tests; build (1,530 modules); dist/_redirects; production audit 0; docs-only freeze and owner deploy handoff`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

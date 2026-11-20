@@ -1,90 +1,76 @@
-# Releasing TelePlay
+# Hearth Release and Deployment
 
-This document describes how to create releases for TelePlay.
+Hearth is deployed as a web application: Cloudflare Pages publishes the web
+client from `main`, and the owner deploys the backend to the VPS from a reviewed
+Git tag. This replaces the obsolete Android APK release instructions.
 
-## Android TV & Mobile APK Releases
+The owner performs and approves every production tag and deployment. The coding
+agent must not create tags, deploy, or merge the release PR.
 
-APK builds are automated via GitHub Actions. When you push a version tag, the workflow automatically:
+## T13.11 release candidate
 
-1. Builds release APKs (split by CPU architecture)
-2. Builds a debug APK
-3. Creates a GitHub Release with all APKs attached
-
-### Quick Release
-
-```bash
-# Tag a new release
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The GitHub Action will handle the rest!
-
-### Manual Build
-
-You can also trigger a build manually:
-
-1. Go to **Actions** → **Build Android TV APK**
-2. Click **Run workflow**
-3. Optionally specify a version name
-4. Download artifacts when complete
-
-## Setting Up APK Signing
-
-For signed release APKs, configure these GitHub Secrets:
-
-### Required Secrets
-
-| Secret              | Description                  |
-| ------------------- | ---------------------------- |
-| `KEYSTORE_BASE64`   | Base64-encoded keystore file |
-| `KEYSTORE_PASSWORD` | Keystore password            |
-| `KEY_ALIAS`         | Key alias in the keystore    |
-| `KEY_PASSWORD`      | Key password                 |
-
-### Creating a Keystore
+After the owner merges the reviewed T13.11 PR:
 
 ```bash
-# Generate a new keystore
-keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias teleplay
-
-# Encode to base64 for GitHub Secret
-base64 -w 0 release.jks > keystore-base64.txt
+git checkout main
+git pull
+git rev-parse HEAD
+git tag deploy-T13.11-rc
+git push origin deploy-T13.11-rc
 ```
 
-### Adding Secrets to GitHub
+Before tagging, verify that `HEAD` is the merged T13.11 commit. The final merge
+commit may differ from the tested code-candidate commit; tag the merged commit
+on `main`, not the feature branch. The tag is the pinned VPS release.
 
-1. Go to your repository → **Settings** → **Secrets and variables** → **Actions**
-2. Add each secret:
-   - `KEYSTORE_BASE64`: Contents of `keystore-base64.txt`
-   - `KEYSTORE_PASSWORD`: Password you used when creating keystore
-   - `KEY_ALIAS`: `teleplay` (or whatever alias you used)
-   - `KEY_PASSWORD`: Key password (same as keystore password if you used the same)
+Cloudflare Pages auto-publishes from `main`. Confirm that `teleplay.pages.dev`
+serves the final build after the merge, then hard-refresh the site.
 
-### Without Signing
+## VPS deployment
 
-If you don't add the signing secrets, the workflow will still build APKs - they just won't be signed. Users can still install them by enabling "Install from unknown sources" on their devices.
+Follow [deploy/README.md](../deploy/README.md), especially its section 4 and
+security requirements. For the T13.11 update, the owner checks out the pinned
+tag in the existing application checkout:
 
-## Version Numbering
+```bash
+sudo -u hearth git -C /opt/hearth/app fetch --tags
+sudo -u hearth git -C /opt/hearth/app checkout --detach deploy-T13.11-rc
+sudo systemctl restart hearth
+curl -fsS http://127.0.0.1:8000/health/ready
+sudo journalctl -u hearth -n 50 --no-pager
+```
 
-We follow [Semantic Versioning](https://semver.org/):
+Confirm readiness, registered bot handlers, and the expected service state in
+the journal. Then make an authenticated `GET /api/playback/count` request and
+confirm the response contains only `{"active":N,"limit":2}`. T13.11 changes no
+dependencies, so do not reinstall them for this release.
 
-- `v1.0.0` - Stable release
-- `v1.1.0-beta` - Beta release
-- `v1.1.0-alpha` - Alpha release
+## Acceptance smoke checks
 
-Beta and alpha releases are automatically marked as pre-releases on GitHub.
+- **Phone:** Portrait launch, all controls visible, Android and iPhone
+  fullscreen entry/exit, left/right drag indicators only while dragging, lock
+  handle, hold-to-unlock progress, drag-to-pause/play, unlock, and compact lock
+  notices.
+- **Phone / PC / TV:** Controls hide after 3 seconds. Verify the glass center
+  play button on dark and bright frames.
+- **PC / TV:** Side brightness/volume controls and navigation work. On TV, the
+  D-pad reaches both side clusters, held OK ramps values, and the pre-existing
+  keys still behave as documented in `AUDIT_REPORT.md`.
+- **Playback limit:** Two devices playing and a third attempt displays
+  “Maximum watch devices reached”; chip count 1 is green and count 2 is orange.
+  Stopping or closing a player frees its slot, or the slot expires within about
+  75 seconds.
 
-## APK Variants
+## Rollback
 
-The build produces multiple APKs optimized for different architectures:
+There are no dependency or database-schema changes in T13.11. If backend
+rollback is required, restore the previous VPS tag and restart the service:
 
-| APK           | Size  | Target Devices                                 |
-| ------------- | ----- | ---------------------------------------------- |
-| `arm64-v8a`   | ~25MB | Modern Android TV boxes, NVIDIA Shield, Phones |
-| `armeabi-v7a` | ~20MB | Older 32-bit ARM devices                       |
-| `x86_64`      | ~25MB | Intel-based Android devices                    |
-| `x86`         | ~20MB | Older Intel Android devices                    |
-| `universal`   | ~80MB | Any device (includes all architectures)        |
+```bash
+sudo -u hearth git -C /opt/hearth/app checkout --detach deploy-T12.90.2-rc
+sudo systemctl restart hearth
+```
 
-Most users should download `arm64-v8a` for modern devices or `universal` if unsure.
+The new web build is compatible with the old server: the live-devices chip
+silently stays hidden when the count endpoint returns 404/405. If needed, roll
+Cloudflare Pages back to the previous deployment.
