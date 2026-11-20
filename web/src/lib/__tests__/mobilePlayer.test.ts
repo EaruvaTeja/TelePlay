@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     isPhonePlayer,
+    classifyLockGesture,
     calculateDragValue,
     clampBrightness,
     clampVolume,
+    getLockedPlaybackAction,
     resolveSurfaceTap,
     selectDragSide,
     shouldClaimVerticalDrag,
+    shouldAutoUnlockControlLock,
+    shouldToggleLockedPlayback,
     shouldUseDeviceVolumeButtons,
     shouldUseWebkitFullscreenFallback,
     sliderRatio,
@@ -138,5 +142,43 @@ describe('brightness and volume gesture helpers', () => {
         expect(shouldUseDeviceVolumeButtons(true, true)).toBe(false);
         expect(shouldUseDeviceVolumeButtons(true, null)).toBe(true);
         expect(shouldUseDeviceVolumeButtons(false, false)).toBe(false);
+    });
+});
+
+describe('phone lock gesture helpers', () => {
+    it.each([
+        [0, 0, 'tap'],
+        [7, 0, 'tap'],
+        [7, -7, 'ignore'],
+        [8, 0, 'ignore'],
+        [9, 0, 'drag'],
+        [-24, 2, 'drag'],
+        [0, 9, 'ignore'],
+        [10, 12, 'ignore'],
+    ] as const)('classifies lock movement (%s, %s)', (deltaX, deltaY, expected) => {
+        expect(classifyLockGesture(deltaX, deltaY)).toBe(expected);
+    });
+
+    it.each([
+        [31.9, false],
+        [32, true],
+        [56, true],
+        [-56, false],
+    ])('requires a right drag of at least 32px (%s)', (deltaX, expected) => {
+        expect(shouldToggleLockedPlayback(deltaX)).toBe(expected);
+    });
+
+    it('toggles toward the opposite playback action', () => {
+        expect(getLockedPlaybackAction(true)).toBe('pause');
+        expect(getLockedPlaybackAction(false)).toBe('play');
+    });
+
+    it.each([
+        [true, false, false, true],
+        [false, true, false, true],
+        [false, false, true, true],
+        [false, false, false, false],
+    ])('unlocks on end, error, or dialog (%s, %s, %s)', (ended, hasError, dialogOpen, expected) => {
+        expect(shouldAutoUnlockControlLock(ended, hasError, dialogOpen)).toBe(expected);
     });
 });
