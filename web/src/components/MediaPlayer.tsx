@@ -62,6 +62,7 @@ import {
     isPhonePlayer,
     lockLandscape,
     resolveSurfaceTap,
+    sliderRatio,
     shouldAutoLandscape,
     unlockLandscape,
 } from '../lib/mobilePlayer';
@@ -731,8 +732,9 @@ const SeekFlash = memo(function SeekFlash({ store }: { store: Store<FlashState |
 
 /* ═══════════════════════════ Scrubber ═══════════════════════════ */
 
-const Scrubber = memo(function Scrubber({ duration, secStore, disabled, fillRef, bufRef, thumbRef, scrubberRef, onSeek, onDragState }: {
+const Scrubber = memo(function Scrubber({ duration, secStore, disabled, rotated, fillRef, bufRef, thumbRef, scrubberRef, onSeek, onDragState }: {
     duration: number; secStore: Store<number>; disabled?: boolean;
+    rotated?: boolean;
     fillRef: MutableRef<HTMLDivElement>; bufRef: MutableRef<HTMLDivElement>; thumbRef: MutableRef<HTMLDivElement>;
     scrubberRef: MutableRef<HTMLDivElement>;
     onSeek: (t: number) => void; onDragState: (dragging: boolean) => void;
@@ -742,10 +744,10 @@ const Scrubber = memo(function Scrubber({ duration, secStore, disabled, fillRef,
     const draggingRef = useRef(false);
     const [preview, setPreview] = useState<number | null>(null);
 
-    const ratioAt = (clientX: number) => {
+    const ratioAt = (clientX: number, clientY: number) => {
         const r = trackRef.current?.getBoundingClientRect();
-        if (!r || r.width === 0) return 0;
-        return clamp((clientX - r.left) / r.width, 0, 1);
+        if (!r) return 0;
+        return sliderRatio(r, clientX, clientY, !!rotated);
     };
     const paint = (t: number) => {
         const r = duration > 0 ? clamp(t / duration, 0, 1) : 0;
@@ -759,19 +761,19 @@ const Scrubber = memo(function Scrubber({ duration, secStore, disabled, fillRef,
         draggingRef.current = true;
         onDragState(true);
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older WebViews */ }
-        const t = ratioAt(e.clientX) * duration;
+        const t = ratioAt(e.clientX, e.clientY) * duration;
         setPreview(t); paint(t);
     };
     const move = (e: ReactPointerEvent<HTMLDivElement>) => {
         if (!draggingRef.current) return;
-        const t = ratioAt(e.clientX) * duration;
+        const t = ratioAt(e.clientX, e.clientY) * duration;
         setPreview(t); paint(t);
     };
     const up = (e: ReactPointerEvent<HTMLDivElement>) => {
         if (!draggingRef.current) return;
         draggingRef.current = false;
         onDragState(false);
-        const t = ratioAt(e.clientX) * duration;
+        const t = ratioAt(e.clientX, e.clientY) * duration;
         setPreview(null);
         onSeek(t);
     };
@@ -815,14 +817,14 @@ const Scrubber = memo(function Scrubber({ duration, secStore, disabled, fillRef,
     );
 });
 
-const VolumeBar = memo(function VolumeBar({ value, muted, onChange }: { value: number; muted: boolean; onChange: (v: number) => void }) {
+const VolumeBar = memo(function VolumeBar({ value, muted, rotated, onChange }: { value: number; muted: boolean; rotated?: boolean; onChange: (v: number) => void }) {
     const ref = useRef<HTMLDivElement>(null);
     const drag = useRef(false);
     const eff = muted ? 0 : value;
-    const setAt = (clientX: number) => {
+    const setAt = (clientX: number, clientY: number) => {
         const r = ref.current?.getBoundingClientRect();
-        if (!r || r.width === 0) return;
-        onChange(clamp((clientX - r.left) / r.width, 0, 1));
+        if (!r) return;
+        onChange(sliderRatio(r, clientX, clientY, !!rotated));
     };
     return (
         <div
@@ -831,8 +833,8 @@ const VolumeBar = memo(function VolumeBar({ value, muted, onChange }: { value: n
             aria-valuetext={`${Math.round(eff * 100)} percent`}
             className="hp-focus relative hidden h-9 w-24 cursor-pointer items-center sm:flex"
             style={{ touchAction: 'none' }}
-            onPointerDown={(e) => { drag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ } setAt(e.clientX); }}
-            onPointerMove={(e) => { if (drag.current) setAt(e.clientX); }}
+            onPointerDown={(e) => { drag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ } setAt(e.clientX, e.clientY); }}
+            onPointerMove={(e) => { if (drag.current) setAt(e.clientX, e.clientY); }}
             onPointerUp={() => { drag.current = false; }}
             onPointerCancel={() => { drag.current = false; }}
         >
@@ -2586,7 +2588,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                             <div className="flex items-center gap-3 sm:gap-4">
                                 <span className="min-w-[52px] font-mono text-sm font-semibold text-white/90"><TimeText store={secStore} /></span>
                                 <Scrubber
-                                    duration={duration} secStore={secStore}
+                                    duration={duration} secStore={secStore} rotated={pseudoLandscape}
                                     fillRef={fillRef} bufRef={bufRef} thumbRef={thumbRef} scrubberRef={scrubberRef}
                                     onSeek={seekTo} onDragState={onScrubDrag}
                                 />
@@ -2604,7 +2606,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                                     <span className="mx-1 hidden h-6 w-px bg-white/15 sm:block" />
                                     <IconBtn label={prefs.muted ? 'Unmute' : 'Mute'} onClick={toggleMute} active={prefs.muted} icon={VolIcon} />
                                     <IconBtn label="Volume down" onClick={volDown} icon={Minus} iconClass="h-4 w-4" />
-                                    <VolumeBar value={prefs.volume} muted={prefs.muted} onChange={setVolumeLevel} />
+                                    <VolumeBar value={prefs.volume} muted={prefs.muted} rotated={pseudoLandscape} onChange={setVolumeLevel} />
                                     <IconBtn label="Volume up" onClick={volUp} icon={Plus} iconClass="h-4 w-4" />
                                 </div>
 

@@ -4,7 +4,7 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t12.90.1`
+* **Active Branch:** `hearth/t12.90.2`
 * **Current Task:** `T12.91` — Stale bundle and VPS resource recovery (**ON HOLD**)
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
@@ -44,6 +44,7 @@
 * [x] **T12.89** — Schema proof, deploy runbooks, proxy validation, and provenance
 * [x] **T12.90** — Reliability hardening, banner replacement, and clean-checkout freeze candidate
 * [x] **T12.90.1** — Persistent auth-key failure threshold; close Finding B
+* [x] **T12.90.2** — OWNER-AUTHORIZED MediaPlayer exception #4: pseudo-landscape slider axis fix and final freeze gates
 * [ ] **T12.91** — Stale bundle and VPS resource recovery
 * [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R)
 * [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD; deployment paused pending T12.5 merge, owner smoke tests, and release re-freeze
@@ -56,9 +57,10 @@
 
 * **2026-11-20 post-incident state — CONFIRMED:** VPS origin repointed to GitHub; live SHA `c0aa30f28408add60574de9f9385912131b5524a` (`deploy-T12.7`); silent bot fixed by unconditional bot import in lifespan. WARP SOCKS5 `127.0.0.1:40000` present for GitHub IPv4 egress. Stale bundle `/opt/hearth/hearth-v1.0-rc.bundle` remains at `7629f0a`. Disk 75% (3.0/4.0 GB); RAM 210/512 MB.
 * **Incident items:** A1/A2 handler-count fail-fast is **CONFIRMED in code/tests by T12.90**; runtime VPS behavior is **VERIFY ON VPS**. Schema/proxy/provenance are T12.89, VPS bundle/resources are T12.91, and live release gates are T12.92.
-* **T12.90 freeze candidate:** clean-checkout test commit `e9f170459ad532020907325472f538408029048c`, tree `d84fe1abbd34f41d9b1d4e8454a0938a944c3648` (base `a0499775e410465f503fe148aee0959b859bc479`); final audit evidence is appended after the gates, with no source/test/banner changes afterward. Owner tags `deploy-T12.90-rc` only after merge.
+* **T12.90 freeze candidate:** clean-checkout test commit `e9f170459ad532020907325472f538408029048c`, tree `d84fe1abbd34f41d9b1d4e8454a0938a944c3648` (base `a0499775e410465f503fe148aee0959b859bc479`); **SUPERSEDED by T12.90.2** below. Owner tags `deploy-T12.90-rc` only after merge.
 * **T12.90 banner:** **CONFIRMED** source/destination SHA-256 match; tracked blob and final commit inclusion are checked before handoff.
 * **Finding B — CONFIRMED CLOSED IN CODE by T12.90.1:** per-client auth-key failures must reach 3 within 60 seconds before quarantine; successful lookup/chunk delivery clears the counter. **VERIFY ON VPS:** live transient recovery and the persistent-failure operator workflow.
+* **T12.90.2 freeze candidate — CONFIRMED:** clean-checkout snapshot SHA `81c41f02c40b60620a9f5c84484f53177af99c72`, tree `fbfe33b3f77f0a2a7980b65e7c0c8eb3d530f5ba`, based on latest `main` `f1f656375f88990332fe3078e70a8e893860085d`; supersedes `e9f1704`. Gate evidence append changed documentation only; tested implementation/tests remain identical. **VERIFY ON DEVICE:** iPhone pseudo-landscape seek/volume drags, orientation exit, Android native lock.
 * **ON HOLD:** T12.91, T0-R, T12.92, T15-R, and T16-R; deployment/release remains NO-GO pending owner authorization and required VPS evidence.
 * **F-01 — CONFIRMED CLOSED IN CODE by T12.81:** family stream version, `User.id` identity, and active membership checks are enforced before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs.
 * **F-02 — CONFIRMED CLOSED IN CODE by T12.82:** `family_members.active` governs bot/API authorization and verify-code for existing users; `AUTH_USERS` is only a DB-connectivity bootstrap fallback. **VERIFY ON VPS:** live membership add/remove, verify-code, and DB-wake recovery.
@@ -133,6 +135,7 @@
 * `2026-11-20 | T12.89 | gate passed: 208 backend tests (61 warnings), compileall, pip check; Node 20.20.2/npm 11.20.0 npm ci/lint/typecheck, 170 frontend tests, build, dist/_redirects present; schema/proxy regression tests green`
 * `2026-11-20 | T12.90 | backend 221 passed (61 warnings), compileall and pip check; frontend lint/typecheck and 170 tests/build passed; prod npm audit 0, pip-audit findings recorded; banner replaced and verified`
 * `2026-11-20 | T12.90.1 | backend 226 passed (61 warnings), compileall and pip check; focused auth-key tests 13 passed; frontend lint/typecheck and 170 tests/build passed; prod npm audit 0`
+* `2026-11-20 | T12.90.2 | gate passed: clean-checkout pytest 226 (61 warnings), compileall, pip check; pip-audit 22 advisory rows recorded; Node 20.20.2/npm 10.8.2 lint/typecheck and 178 frontend tests/build passed; npm audit production 0`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 
