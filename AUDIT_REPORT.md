@@ -890,3 +890,36 @@ The existing `handleBack` closes settings first; closes the player if a dialog i
 - **VERIFY ON TV:** None; TV behavior was not changed or tested on hardware.
 - **VERIFY ON VPS:** None; this is a phone-only client UX change with no backend contract change.
 - **CONFIRMED:** No task-scope deviation and no tests deleted. `PROGRESS.md` Current Task remains T13.10.
+
+## T13.8.2 — Mobile lock playback indicator and notice polish
+
+### Changes and scope — CONFIRMED
+
+- **CONFIRMED:** Base is latest `main` at `fb25e9cf584b66398d7a24d0e5fe0e9592c68950`; it contains T13.8.1 commit `fc8dbb5b16d10da4bf7a781c3c30a82a35f3d203`. Branch: `hearth/t13.8.2`.
+- **CONFIRMED:** Implemented only within owner-authorized Exception #5.7.2. Files changed: `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and this report. `web/src/index.css` was not changed; existing `hp-lock-drag-confirm` styling and the global reduced-motion rule were sufficient.
+- **CONFIRMED:** The locked handle now always shows `Lock`. The adjacent action indicator uses `getLockedPlaybackAction(playing)`: synchronized `playing` state maps to Pause; paused state maps to Play. The same helper remains the drag action selector, so no duplicate playback-state mechanism was added.
+- **CONFIRMED:** A classified positive horizontal drag replaces the idle arrow/action icon with a dot on a short track. `getLockedDragProgress()` still maps progress to the existing 32px threshold; track opacity rises with progress and the dot reaches its endpoint at threshold. The existing confirmation pulse and `Paused`/`Playing` status remain; release and cancellation reset the indicator. Pointer-down by itself, stationary hold, tap-sized/invalid/vertical movement, and leftward movement keep the idle action icon.
+- **CONFIRMED:** The locked notice now reads exactly “Locked” / “Hold lock to unlock”; Paused/Playing notices contain no subtitle. Notice title/subtitle sizing is 13px/11px. The Back hint says “Hold lock to unlock.” The one-second hold, progress ring, keyboard unlock, gesture thresholds, pointer capture/cancel/lost-capture behavior, and handle travel are unchanged.
+- **CONFIRMED:** Removed visible “Drag right to pause/play” text and its `hp-lock-drag-hint` ID/reference. The screen-reader-only hold/keyboard and playback-action descriptions remain; all remaining `aria-describedby` targets are rendered by the locked handle. No invalid drag-hint reference remains.
+- **CONFIRMED:** No tests were deleted or weakened. The existing action-mapping assertions were renamed to describe the icon mapping; notice assertions now require the simplified copy. Full frontend test count stayed at 78 and focused mobile-player count stayed at 64.
+- **CONFIRMED by source/diff:** lock rendering remains in the phone-only path. No TV/PC/tablet controls or behavior, playback engine/session/heartbeat, API/store, backend, database, dependency manifests, preferences, or storage keys changed. `pauseMedia()` and `playMedia()` were not modified.
+
+### Baseline and gates — CONFIRMED
+
+- **CONFIRMED:** Node **20.20.2** / npm **10.8.2**. Before editing, `npm ci` passed (447 packages); `npx vitest run` passed (**3 files, 78 tests**); focused `npx vitest run src/lib/__tests__/mobilePlayer.test.ts` passed (**1 file, 64 tests**).
+- **CONFIRMED:** After implementation, `npm ci` passed again (447 packages); npm reported the existing dependency-tree advisories (**24 total: 1 low, 6 moderate, 15 high, 2 critical**). No package or lockfile change was made.
+- **CONFIRMED:** Post-change focused Vitest — **1 file, 64 passed**; full Vitest — **3 files, 78 passed**. Neither count decreased from the measured pre-change baseline; no tests were removed.
+- **CONFIRMED:** `npm run typecheck` — PASS; `npm run lint` — PASS with **0 warnings**; `npm run build` — PASS (**1,529 modules**); `dist/_redirects` — present; `git diff --check` — PASS.
+- **CONFIRMED:** No backend gate was run because this is a phone-only frontend task with no backend changes. `npm audit` was not a required gate; `npm ci` surfaced the advisory counts above.
+
+### Acceptance and verification
+
+- **CONFIRMED by source/tests:** playing maps to Pause, paused maps to Play, and the main handle remains Lock in either state. The actual rightward drag indicator uses existing progress and threshold helpers; a stationary hold retains the icon and the existing hold timer/ring. The existing CSS reduced-motion rule shortens animation and transition durations.
+- **CONFIRMED by source review:** no visible stale drag instruction or “Hold lock 1s” wording remains in `web/src`; no `hp-lock-drag-hint` reference remains. The Back hint and notice use the updated copy.
+- **CONFIRMED by diff:** only phone lock-related UI changed in `MediaPlayer.tsx`; TV/PC/tablet source paths and non-lock player behavior are unchanged. No test deletion, dependency change, API/backend/database/storage change, or unrelated hunk.
+- **VERIFY ON DEVICE:** portrait, landscape, and fullscreen: Lock remains visible and the Pause/Play icon matches actual playback; no clipping/overlap; no visible drag instructions; compact “Locked” notice is readable.
+- **VERIFY ON DEVICE:** stationary hold preserves the icon and progress ring; valid right drag swaps to the moving dot, reaches its endpoint at 32px, pulses subtly, then pauses/resumes; icon updates afterward and lock stays active; left/invalid/vertical movement does not toggle; cancel/release resets the dot.
+- **VERIFY ON DEVICE:** one-second hold and keyboard unlock remain functional; Back hint is clear; paused-handle visibility/playing auto-hide and phone brightness/volume gestures remain correct.
+- **VERIFY ON TV / VERIFY ON DEVICE:** Samsung TV, PC, and tablet behavior was not runtime-tested; no code path for those devices was intentionally changed.
+- **VERIFY ON VPS:** none; no server or API change.
+- **CONFIRMED:** `PROGRESS.md` is checked for T13.8.2, Active Branch is `hearth/t13.8.2`, and Current Task remains T13.10. Exception #5.7.2 is re-frozen in `HANDOFF.md`.

@@ -172,7 +172,7 @@ describe('phone lock gesture helpers', () => {
         expect(shouldToggleLockedPlayback(deltaX)).toBe(expected);
     });
 
-    it('toggles toward the opposite playback action', () => {
+    it('shows Pause while playing and Play while paused', () => {
         expect(getLockedPlaybackAction(true)).toBe('pause');
         expect(getLockedPlaybackAction(false)).toBe('play');
     });
@@ -211,15 +211,15 @@ describe('phone lock gesture helpers', () => {
     it('provides clear unlock instructions and locked playback feedback', () => {
         expect(getLockNotice('locked')).toEqual({
             title: 'Locked',
-            subtitle: 'Hold lock 1s to unlock.',
+            subtitle: 'Hold lock to unlock',
         });
         expect(getLockNotice('paused')).toEqual({
             title: 'Paused',
-            subtitle: 'Still locked. Drag right to play.',
+            subtitle: '',
         });
         expect(getLockNotice('playing')).toEqual({
             title: 'Playing',
-            subtitle: 'Still locked. Drag right to pause.',
+            subtitle: '',
         });
     });
 
