@@ -703,3 +703,30 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings**.
 - Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 35 tests passed**; `npm run build` — **PASS** (1,529 modules); `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
 - **CONFIRMED:** backend test count matches the T13.1 baseline (226); frontend count remains 35 from the T13.4 branch baseline (T13.5 adds/deletes no tests). `git diff --check` — **PASS**.
+
+## T13.6 — Phone brightness/volume drag gestures and indicator
+
+### Changes and scope — CONFIRMED
+
+- **CONFIRMED:** added the additive `brightness` field to the existing `hearth_player_prefs` object (default `1`, clamped to `0.1–1`); preferences written before T13.6 load with brightness `1`. A phone-only, pointer-events-none black overlay at `z-[12]` applies opacity `1 - brightness`; no video filter or storage key was added.
+- **CONFIRMED:** phone video-surface vertical drags claim only after the specified axis threshold. Left adjusts brightness; right adjusts the existing `volume`/`muted` preferences using the `0.65 × stageHeight` delta. Pointer capture is requested only after claim, pointer cancellation clears the gesture, and the surface click is suppressed after a claimed drag. Top/bottom controls and Scrubber bounds are excluded; horizontal movement is not claimed.
+- **CONFIRMED:** probed `video.volume` once per phone player instance and restored its previous volume/muted state. A non-writable or not-yet-confirmed volume control shows “Use device volume buttons” instead of a numeric value; the top-bar Mute remains available.
+- **CONFIRMED:** added a reusable indicator component with the requested brightness/volume icons, track, value/hint, solid rgba fill/border, pointer-events-none behavior, `z-[60]`, and 800ms fade. Its 48px pill uses a computed `max(64px, 14% of viewport width)` edge offset; at 320px width it ends at 112px from the left/right edge and clears the central 80px Play/Pause button beginning at 120px by 8px.
+- **CONFIRMED:** added nine pure-helper test cases (threshold classification, delta/clamps, side selection, and device-volume fallback). Deleted tests: **none**. Frontend tests rose from 35 at T13.5 to 44.
+- **CONFIRMED:** files changed: `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` is unchanged because its T13.6 card matched the implementation.
+- **CONFIRMED:** every `MediaPlayer.tsx` diff hunk is within #5.5: brightness preference/default/loading; reusable indicator; phone-only volume capability probe and preservation of prefs.volume when the element is non-writable; gesture pointer/click handling; phone-only touch-action and brightness overlay; and the bottom-control bounds ref used to avoid claiming UI gestures.
+
+### Parity and owner verification — CONFIRMED / VERIFY
+
+- **CONFIRMED by source diff:** the feature is gated by `isPhonePlayer()` and video status. Brightness overlay and touch-action are not applied on PC, TV, or tablet; the volume-writability ref remains unset on those devices, preserving the existing `onVolumeChange` path. No API/server contract changed.
+- **VERIFY ON DEVICE:** test left/right drags, 10% brightness floor, mute at zero/unmute above zero, indicator fade, tap-to-toggle suppression, Scrubber/top/bottom-control exclusions, portrait and physical landscape, and standard fullscreen on Android.
+- **VERIFY ON DEVICE:** on iPhone, verify the device-volume hint, top-bar Mute, and right-side drag in the supported fullscreen mode. **VERIFY ON DEVICE:** confirm the indicator remains clear of the center Play/Pause cluster on narrow screens.
+- **VERIFY ON TV:** confirm Samsung Tizen controls and D-pad behavior are unchanged. PC/tablet parity is source-guarded; physical browser verification remains **VERIFY ON DEVICE**.
+- **VERIFY ON VPS:** no VPS check is required; this is a web-only change and the old server/API remains in use.
+- **CONFIRMED:** no dependencies or tests were deleted; deviations/findings: **none**. Physical-device, TV, and VPS behavior was not tested.
+
+### Gates — CONFIRMED
+
+- Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings** (baseline 226).
+- Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 44 tests passed** (35 prior, +9; no deleted tests); `npm run build` — **PASS** (1,529 modules); `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** backend tests match the T13.1 baseline (226). Frontend tests are 44 versus 178 at T13.1 because T13.4 removed 147 tests for deleted orientation machinery and added four WebKit-fallback tests (documented in T13.4); this task adds nine tests to the T13.5 count of 35 and deletes none. `git diff --check` — **PASS**. No live or physical-device checks were performed.

@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     isPhonePlayer,
+    calculateDragValue,
+    clampBrightness,
+    clampVolume,
     resolveSurfaceTap,
+    selectDragSide,
+    shouldClaimVerticalDrag,
+    shouldUseDeviceVolumeButtons,
     shouldUseWebkitFullscreenFallback,
     sliderRatio,
 } from '../mobilePlayer';
@@ -92,5 +98,45 @@ describe('sliderRatio', () => {
         [{ ...rect, height: 0 }, true],
     ])('returns zero for a zero-sized active axis', (degenerateRect, rotated) => {
         expect(sliderRatio(degenerateRect, 50, 50, rotated)).toBe(0);
+    });
+});
+
+describe('brightness and volume gesture helpers', () => {
+    it.each([
+        [0, 13, true],
+        [0, -13, true],
+        [10, 13, false],
+        [10, 14, true],
+        [0, 12, false],
+    ])('claims only a clearly vertical drag (%s, %s)', (deltaX, deltaY, expected) => {
+        expect(shouldClaimVerticalDrag(deltaX, deltaY)).toBe(expected);
+    });
+
+    it('maps vertical displacement to a clamped adjustment value', () => {
+        expect(calculateDragValue(0.5, 500, 435, 1000)).toBeCloseTo(0.6);
+        expect(calculateDragValue(0.5, 500, 100, 1000)).toBe(1);
+        expect(calculateDragValue(0.5, 500, 900, 1000)).toBe(0);
+        expect(calculateDragValue(0.5, 500, 400, 0)).toBe(0.5);
+    });
+
+    it('clamps brightness above black and volume to mute', () => {
+        expect(clampBrightness(0)).toBe(0.1);
+        expect(clampBrightness(0.6)).toBe(0.6);
+        expect(clampBrightness(1.2)).toBe(1);
+        expect(clampVolume(-0.2)).toBe(0);
+        expect(clampVolume(0.6)).toBe(0.6);
+        expect(clampVolume(1.2)).toBe(1);
+    });
+
+    it('selects the drag side at pointerdown using the stage midpoint', () => {
+        expect(selectDragSide(149, 100, 100)).toBe('left');
+        expect(selectDragSide(150, 100, 100)).toBe('right');
+    });
+
+    it('uses the device-volume hint only for phones with non-writable volume', () => {
+        expect(shouldUseDeviceVolumeButtons(true, false)).toBe(true);
+        expect(shouldUseDeviceVolumeButtons(true, true)).toBe(false);
+        expect(shouldUseDeviceVolumeButtons(true, null)).toBe(true);
+        expect(shouldUseDeviceVolumeButtons(false, false)).toBe(false);
     });
 });
