@@ -354,3 +354,23 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **CONFIRMED:** `npm ci` reported 24 dependency-tree advisories (1 low, 6 moderate, 15 high, 2 critical). No dependency upgrade or manifest change was made.
 - **VERIFY ON VPS:** exercise the index migration against Neon, inspect/report any legacy duplicate channel IDs, and verify upload/compensation behavior with live Telegram storage.
 - **NOT VERIFIED:** no production database, VPS, or live Telegram upload was used for this task.
+
+## T12.84 — Fail-safe reconciliation
+
+### Reconciliation behavior
+
+- **CONFIRMED:** `prepare_stream()` returns an empty context only when every client lookup completed successfully and reported no message. Mixed gone/error results and live non-media results raise `StreamUnavailable`.
+- **CONFIRMED:** an empty streaming context triggers one direct `tg_client.get_messages()` confirmation. A successful empty result deletes the database row and invalidates metadata; lookup errors and a still-present message return `STREAM_UNAVAILABLE` while preserving the row.
+- **CONFIRMED:** `/sync` reports proposed deletions without changing rows. `/sync confirm` performs deletion only after all batch requests succeed and the existing all-gone / 30% guard passes. Proposed and committed deletions log both file ID and `channel_message_id`.
+- **CONFIRMED:** regressions cover mixed and unanimous client outcomes, live non-media results, authoritative confirmation error/empty/present cases, dry-run, confirmation, and a later batch failure after an earlier candidate; failed scans delete no rows.
+
+### Fresh T12.84 gate evidence
+
+- **CONFIRMED:** Date 2026-11-20; branch `hearth/t12.84`; based on latest `main` at `c76b395` (T12.83 merge).
+- **CONFIRMED:** Python 3.13.0; `.venv\Scripts\python -m pytest -q` — **177 passed, 61 warnings**; `.venv\Scripts\python -m compileall -q app` — **PASS**; `.venv\Scripts\python -m pip check` — **PASS, no broken requirements**.
+- **CONFIRMED:** focused reconciliation and existing sync guard tests — **16 passed, 1 warning**.
+- **CONFIRMED:** Node 20.19.5 / npm 10.8.2; `npm ci` — **PASS** (447 packages); `npm run lint` — **PASS**; `npm run typecheck` — **PASS**; `npm test` — **2 files, 14 tests passed**; `npm run build` — **PASS**; `dist/_redirects` — **present**.
+- **CONFIRMED:** `npm ci` reported 24 dependency-tree advisories (1 low, 6 moderate, 15 high, 2 critical); no dependency manifest or version was changed.
+- **CONFIRMED:** `git diff --stat -- web/src/components/MediaPlayer.tsx` is empty.
+- **VERIFY ON VPS:** verify the deployed `SYNC_ON_STARTUP=false` environment and, after owner approval, check `/sync` dry-run and `/sync confirm` behavior against Telegram storage.
+- **NOT VERIFIED:** no live VPS, Telegram, or production database interaction was performed.

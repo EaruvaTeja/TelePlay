@@ -814,30 +814,80 @@ async def logout_all_command(client, message: Message):
 
 @tg_client.on_message(filters.command("sync") & filters.private)
 async def sync_command(client, message: Message):
-    """Clean up orphaned database rows (files whose Telegram message was deleted)."""
+    """Preview orphaned rows; require `/sync confirm` before deleting any."""
     if message.from_user.id != settings.admin_telegram_id:
         return await message.reply("Admin only.")
 
-    status = await message.reply("🔄 Syncing library with Telegram...")
-    n = await sync_with_channel()
-    await status.edit(f"✅ Sync done. Removed {n} dead entr{'y' if n == 1 else 'ies'}.")
+    args = message.command[1:]
+    if args not in ([], ["confirm"]):
+        return await message.reply("Usage: /sync [confirm]")
+
+    confirm = args == ["confirm"]
+    status = await message.reply(
+        "🔄 Confirming Telegram library state..."
+        if confirm
+        else "🔎 Checking Telegram library (dry run)..."
+    )
+    try:
+        n = await sync_with_channel(confirm=confirm)
+    except Exception as e:
+        logger.error("Sync command failed: %s", e, exc_info=True)
+        return await status.edit("⚠️ Sync failed; check server logs before retrying.")
+
+    if confirm:
+        await status.edit(f"✅ Sync confirmed. Removed {n} dead entr{'y' if n == 1 else 'ies'}.")
+    else:
+        await status.edit(
+            f"🔎 Dry run found {n} candidate entr{'y' if n == 1 else 'ies'}. "
+            "Nothing was deleted. Use /sync confirm to apply the guarded cleanup."
+        )
 
 
-async def sync_with_channel() -> int:
-    """Delete DB rows whose Telegram message no longer exists."""
+async def sync_with_channel(*, confirm: bool = True) -> int:
+    """Report candidate deletions, or delete them after a confirmed safe scan."""
     async with async_session() as db:
         rows = (await db.execute(select(File))).scalars().all()
         gone = []
         alive_count = 0
         for i in range(0, len(rows), 100):
             batch = rows[i : i + 100]
-            msgs = await tg_client.get_messages(
-                settings.telegram_storage_channel_id,
-                [r.channel_message_id for r in batch],
-            )
-            alive = {m.id for m in msgs if m and not getattr(m, "empty", False)}
+            message_ids = [r.channel_message_id for r in batch]
+            try:
+                msgs = await tg_client.get_messages(
+                    settings.telegram_storage_channel_id,
+                    message_ids,
+                )
+            except Exception:
+                logger.exception(
+                    "Sync lookup failed for batch starting at file_id=%s; "
+                    "no rows changed",
+                    batch[0].id,
+                )
+                raise
+            if not isinstance(msgs, (list, tuple)):
+                raise RuntimeError("Telegram returned an invalid sync batch response")
+
+            expected_ids = set(message_ids)
+            alive = set()
+            for msg in msgs:
+                if not msg or getattr(msg, "empty", False):
+                    continue
+                message_id = getattr(msg, "id", None)
+                if message_id not in expected_ids or message_id in alive:
+                    raise RuntimeError("Telegram returned an invalid sync batch result")
+                alive.add(message_id)
             alive_count += len(alive)
             gone += [r for r in batch if r.channel_message_id not in alive]
+
+        for row in gone:
+            logger.info(
+                "Sync audit proposed deletion file_id=%s channel_message_id=%s",
+                row.id,
+                row.channel_message_id,
+            )
+
+        if not confirm:
+            return len(gone)
 
         if rows and (alive_count == 0 or len(gone) > 0.30 * len(rows)):
             logger.warning(
@@ -847,15 +897,21 @@ async def sync_with_channel() -> int:
             )
             return 0
 
-        for r in gone:
-            await db.delete(r)
-        await db.commit()
+        if gone:
+            for r in gone:
+                await db.delete(r)
+            await db.commit()
 
         # Clear metadata + thumbnail + byte caches for every removed row.
         from .routers.streaming import invalidate_meta
 
         for r in gone:
             invalidate_meta(r.id, r.channel_message_id)
+            logger.info(
+                "Sync audit deleted file_id=%s channel_message_id=%s",
+                r.id,
+                r.channel_message_id,
+            )
 
     return len(gone)
 
