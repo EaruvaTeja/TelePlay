@@ -133,6 +133,7 @@ class File(Base):
     __table_args__ = (
         Index("idx_file_user_folder", user_id, folder_id),
         Index("idx_file_type", file_type),
+        Index("uq_files_channel_message_id", channel_message_id, unique=True),
     )
 
 

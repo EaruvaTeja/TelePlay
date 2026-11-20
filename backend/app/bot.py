@@ -895,6 +895,8 @@ async def handle_file(client, message: Message):
 
     status_msg = await message.reply("📥 Processing file...")
     forwarded = None
+    db_committed = False
+    commit_attempted = False
 
     try:
         user = await get_or_create_user(
@@ -924,59 +926,118 @@ async def handle_file(client, message: Message):
         }
 
         async with async_session() as db:
-            file = File(
-                user_id=user.id,
-                channel_message_id=forwarded.id,
-                file_type=file_type,
-                **file_info,
+            existing = await db.execute(
+                select(File)
+                .where(File.channel_message_id == forwarded.id)
+                .order_by(File.id)
+                .limit(1)
             )
-            db.add(file)
+            file = existing.scalars().first()
+            if file is None:
+                dialect_name = db.get_bind().dialect.name
+                if dialect_name == "postgresql":
+                    from sqlalchemy.dialects.postgresql import insert as dialect_insert
+                elif dialect_name == "sqlite":
+                    from sqlalchemy.dialects.sqlite import insert as dialect_insert
+                else:
+                    raise RuntimeError(
+                        f"Unsupported upload database dialect: {dialect_name}"
+                    )
+
+                statement = dialect_insert(File).values(
+                    user_id=user.id,
+                    channel_message_id=forwarded.id,
+                    file_type=file_type,
+                    **file_info,
+                )
+                await db.execute(statement.on_conflict_do_nothing())
+
+            commit_attempted = True
             await db.commit()
+            if file is None:
+                result = await db.execute(
+                    select(File)
+                    .where(File.channel_message_id == forwarded.id)
+                    .order_by(File.id)
+                    .limit(1)
+                )
+                file = result.scalars().first()
+            if file is None:
+                raise RuntimeError(
+                    "Upload row missing after channel-message upsert"
+                )
             await db.refresh(file)
-
-        emoji = {"video": "🎬", "audio": "🎵", "document": "📄", "image": "🖼"}.get(
-            file_type, "📎"
-        )
-        response = (
-            f"✅ **File saved to shared library!**\n\n"
-            f"{emoji} **{file_info['file_name']}**\n"
-            f"🆔 File ID: `{file.id}`\n"
-            f"📦 Size: {format_size(file_info['file_size'])}\n"
-            f"🎭 Type: {file_type}\n"
-        )
-        if file_info["duration"]:
-            response += f"⏱ Duration: {format_duration(file_info['duration'])}\n"
-
-        risky = file_info["mime_type"] == "video/x-matroska" or file_info[
-            "file_name"
-        ].lower().endswith((".mkv", ".avi"))
-        if risky:
-            response += "\n⚠️ MKV/AVI: Plays in Chrome & Android TV; may not play in some TV browsers."
-
-        response += (
-            f"\n📁 Folder: / (root)\n\n💡 Use `/file {file.id}` to manage this file"
-        )
-
-        await status_msg.edit(
-            response,
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🗑 Delete", callback_data=f"delfile:{file.id}"
-                        )
-                    ],
-                ]
-            ),
-        )
+            db_committed = True
 
     except Exception as e:
-        # DB insert failed — delete the forwarded Telegram message to prevent orphan
         db_waking = isinstance(e, _DB_CONNECTIVITY_ERRORS)
         if db_waking:
             logger.warning("File upload database failure (%s)", type(e).__name__)
 
-        if forwarded:
+        if forwarded is not None and commit_attempted and not db_committed:
+            try:
+                async with async_session() as db:
+                    result = await db.execute(
+                        select(File)
+                        .where(File.channel_message_id == forwarded.id)
+                        .order_by(File.id)
+                        .limit(1)
+                    )
+                    file = result.scalars().first()
+            except _DB_CONNECTIVITY_ERRORS as lookup_error:
+                logger.warning(
+                    "Could not determine upload commit outcome (%s)",
+                    type(lookup_error).__name__,
+                )
+                try:
+                    await message.reply(
+                        "⚠️ Upload status could not be verified. The forwarded file "
+                        "was kept to avoid deleting a possibly saved file. Check "
+                        "/myfiles before retrying."
+                    )
+                except Exception as reply_error:
+                    logger.warning(
+                        "Upload outcome notification failed (%s)",
+                        type(reply_error).__name__,
+                    )
+                return
+
+            if file is not None:
+                db_committed = True
+                logger.warning(
+                    "Upload row exists despite commit failure (%s); keeping Telegram file",
+                    type(e).__name__,
+                )
+                try:
+                    await message.reply(
+                        "✅ File saved to the shared library, but the normal success "
+                        "notification failed. Check /myfiles for its entry."
+                    )
+                except Exception as reply_error:
+                    logger.warning(
+                        "Upload success notification failed (%s)",
+                        type(reply_error).__name__,
+                    )
+                return
+
+        if db_committed:
+            logger.warning(
+                "File upload saved but processing failed after commit (%s)",
+                type(e).__name__,
+            )
+            try:
+                await message.reply(
+                    "✅ File saved to the shared library, but the normal success "
+                    "notification failed. Check /myfiles for its entry."
+                )
+            except Exception as reply_error:
+                logger.warning(
+                    "Upload success notification failed (%s)",
+                    type(reply_error).__name__,
+                )
+            return
+
+        if forwarded is not None and not db_committed:
             delete_ok = await delete_from_storage_channel(forwarded.id)
             if delete_ok:
                 if db_waking:
@@ -1003,6 +1064,58 @@ async def handle_file(client, message: Message):
             await _reply_db_waking(status_msg, edit=True)
         else:
             await status_msg.edit(f"❌ Failed to process file: {e!s}")
+        return
+
+    try:
+        emoji = {"video": "🎬", "audio": "🎵", "document": "📄", "image": "🖼"}.get(
+            file.file_type, "📎"
+        )
+        response = (
+            f"✅ **File saved to shared library!**\n\n"
+            f"{emoji} **{file.file_name}**\n"
+            f"🆔 File ID: `{file.id}`\n"
+            f"📦 Size: {format_size(file.file_size)}\n"
+            f"🎭 Type: {file.file_type}\n"
+        )
+        if file.duration:
+            response += f"⏱ Duration: {format_duration(file.duration)}\n"
+
+        risky = file.mime_type == "video/x-matroska" or file.file_name.lower().endswith(
+            (".mkv", ".avi")
+        )
+        if risky:
+            response += "\n⚠️ MKV/AVI: Plays in Chrome & Android TV; may not play in some TV browsers."
+
+        response += (
+            f"\n📁 Folder: / (root)\n\n💡 Use `/file {file.id}` to manage this file"
+        )
+        await status_msg.edit(
+            response,
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🗑 Delete", callback_data=f"delfile:{file.id}"
+                        )
+                    ],
+                ]
+            ),
+        )
+    except Exception as e:
+        logger.warning(
+            "File upload saved but status notification failed (%s)",
+            type(e).__name__,
+        )
+        try:
+            await message.reply(
+                "✅ File saved to the shared library, but the status message "
+                "could not be updated. Check /myfiles for its entry."
+            )
+        except Exception as reply_error:
+            logger.warning(
+                "Upload success notification failed (%s)",
+                type(reply_error).__name__,
+            )
 
 
 # ════════════════════════════════════════════════════════════════════════════

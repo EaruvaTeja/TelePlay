@@ -15,6 +15,7 @@ Cover:
 """
 import asyncio
 import json
+import logging
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch, ANY
@@ -22,8 +23,10 @@ from unittest.mock import AsyncMock, MagicMock, patch, ANY
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app import database, models
 from app.models import File, User, WatchProgress
 from app.routers.files import (
     MAX_BATCH_DELETE,
@@ -39,6 +42,84 @@ from app.routers.files import (
 from app.schemas import WatchProgressUpdate, BatchDeleteRequest
 from app.auth import require_admin
 from app.database import get_db
+
+
+@pytest.fixture
+def upload_test_db(monkeypatch, tmp_path):
+    import sys
+
+    import app
+    from app import bot
+
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'bot-upload.db'}"
+    )
+    sessions = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async def setup():
+        await database.init_db()
+        async with sessions() as db:
+            db.add(
+                User(
+                    telegram_id=123456789,
+                    username="family",
+                    first_name="Family",
+                    role="admin",
+                )
+            )
+            await db.commit()
+
+    monkeypatch.setattr(database, "engine", engine)
+    monkeypatch.setattr(database, "async_session", sessions)
+    monkeypatch.setattr(bot, "async_session", sessions)
+    asyncio.run(setup())
+    yield bot, sessions, engine
+    asyncio.run(engine.dispose())
+    sys.modules.pop("app.bot", None)
+    if hasattr(app, "bot"):
+        delattr(app, "bot")
+
+
+class FakeUploadStatus:
+    def __init__(self):
+        self.edits = []
+
+    async def edit(self, text, **kwargs):
+        self.edits.append((text, kwargs))
+
+
+class FakeUploadMessage:
+    def __init__(self, message_id):
+        self.from_user = SimpleNamespace(
+            id=123456789,
+            username="family",
+            first_name="Family",
+            last_name=None,
+        )
+        self.id = message_id
+        self.video = SimpleNamespace(
+            file_id="file-id",
+            file_unique_id="unique-id",
+            file_name="test.mp4",
+            file_size=100,
+            mime_type="video/mp4",
+            duration=1,
+            width=10,
+            height=10,
+            thumbs=[],
+        )
+        self.audio = None
+        self.document = None
+        self.photo = None
+        self.replies = []
+        self.status = FakeUploadStatus()
+
+    async def reply(self, text, **kwargs):
+        self.replies.append((text, kwargs))
+        if text == "📥 Processing file...":
+            return self.status
 
 
 # ────────────────────────── Test fixtures ────────────────────────────────────
@@ -924,6 +1005,109 @@ def test_confirm_telegram_delete_fails_fast():
         assert tg.call_count == 1  # Only first chunk attempted
 
     asyncio.run(_test())
+
+
+def test_bot_upload_duplicate_channel_message_reuses_existing_file(
+    upload_test_db, monkeypatch
+):
+    bot, sessions, _ = upload_test_db
+    forwarded = SimpleNamespace(id=808)
+    forward = AsyncMock(return_value=forwarded)
+    delete = AsyncMock()
+    monkeypatch.setattr(bot, "forward_to_storage_channel", forward)
+    monkeypatch.setattr(bot, "delete_from_storage_channel", delete)
+    messages = [FakeUploadMessage(1), FakeUploadMessage(2)]
+
+    for message in messages:
+        asyncio.run(bot.handle_file(None, message))
+
+    assert forward.await_count == 2
+    assert [awaited.args[0] for awaited in forward.await_args_list] == messages
+    delete.assert_not_awaited()
+    assert messages[0].status.edits[0][0] == messages[1].status.edits[0][0]
+
+    async def files_for_channel_message():
+        async with sessions() as db:
+            return (
+                await db.execute(
+                    select(File).where(File.channel_message_id == forwarded.id)
+                )
+            ).scalars().all()
+
+    assert len(asyncio.run(files_for_channel_message())) == 1
+
+
+def test_init_db_adds_idempotent_unique_channel_message_index(upload_test_db):
+    _, _, engine = upload_test_db
+
+    async def index_rows():
+        async with engine.connect() as conn:
+            return (
+                await conn.exec_driver_sql("PRAGMA index_list('files')")
+            ).all()
+
+    first = asyncio.run(index_rows())
+    asyncio.run(database.init_db())
+    second = asyncio.run(index_rows())
+
+    index_name = "uq_files_channel_message_id"
+    assert any(row[1] == index_name and row[2] == 1 for row in first)
+    assert any(row[1] == index_name and row[2] == 1 for row in second)
+
+
+def test_init_db_skips_unique_channel_message_index_for_legacy_duplicates(
+    upload_test_db, caplog
+):
+    _, sessions, engine = upload_test_db
+
+    async def seed_legacy_duplicates():
+        async with engine.begin() as conn:
+            await conn.execute(text("DROP INDEX uq_files_channel_message_id"))
+        async with sessions() as db:
+            user = (
+                await db.execute(
+                    select(User).where(User.telegram_id == 123456789)
+                )
+            ).scalar_one()
+            db.add_all(
+                [
+                    File(
+                        user_id=user.id,
+                        channel_message_id=909,
+                        file_id="legacy-file-1",
+                        file_unique_id="legacy-unique-1",
+                        file_name="legacy-1.mp4",
+                        file_size=100,
+                        file_type="video",
+                    ),
+                    File(
+                        user_id=user.id,
+                        channel_message_id=909,
+                        file_id="legacy-file-2",
+                        file_unique_id="legacy-unique-2",
+                        file_name="legacy-2.mp4",
+                        file_size=100,
+                        file_type="video",
+                    ),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(seed_legacy_duplicates())
+    with caplog.at_level(logging.ERROR, logger="app.database"):
+        asyncio.run(database.init_db())
+
+    async def index_rows():
+        async with engine.connect() as conn:
+            return (
+                await conn.exec_driver_sql("PRAGMA index_list('files')")
+            ).all()
+
+    assert not any(
+        row[1] == "uq_files_channel_message_id"
+        for row in asyncio.run(index_rows())
+    )
+    assert "skipping unique index creation" in caplog.text
 
 
 def test_batch_delete_preserves_db_row_on_telegram_failure():
