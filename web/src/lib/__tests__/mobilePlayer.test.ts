@@ -3,6 +3,7 @@ import {
     computePseudoLandscape,
     isPhonePlayer,
     lockLandscape,
+    resolveSurfaceTap,
     shouldAutoLandscape,
     unlockLandscape,
 } from '../mobilePlayer';
@@ -61,6 +62,17 @@ describe('shouldAutoLandscape', () => {
     )('restricts auto-landscape to portrait phone video: %o', ({ kind, isPortrait, isVideo }) => {
         expect(shouldAutoLandscape(isVideo, kind, isPortrait))
             .toBe(kind === 'phone' && isPortrait && isVideo);
+    });
+});
+
+describe('resolveSurfaceTap', () => {
+    it.each([
+        ['phone', 'toggle-controls'],
+        ['tv', 'toggle-play'],
+        ['computer', 'toggle-play'],
+        ['tablet', 'toggle-play'],
+    ] as const)('%s keeps its established surface action', (kind, expected) => {
+        expect(resolveSurfaceTap(kind)).toBe(expected);
     });
 });
 

@@ -343,7 +343,13 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T12.87 — OWNER-AUTHORIZED MediaPlayer exception #3: mobile tap controls
 
-**Scope:** implement mobile-only player tap-to-show-controls and center-button play/pause behavior. TV/PC behavior must remain byte-identical in behavior; preserve every `MediaPlayer.tsx` export and both localStorage keys. Freeze the player again immediately after this task.
+**Files:** `web/src/components/MediaPlayer.tsx`, extend `web/src/lib/mobilePlayer.ts`, extend `web/src/lib/__tests__/mobilePlayer.test.ts`, `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+**Scope:** route video-surface taps through `resolveSurfaceTap(kind)`: phones toggle only the controls overlay; TV/computer/tablet keep toggling playback. Disable phone double-click fullscreen, and provide a phone-only center Rewind-10/Pause/Forward-10 cluster while playing with controls visible. Keep the existing paused cluster, bottom-bar play/pause, root reveal/focus duties, and 4-second auto-hide. The phone video surface must never play or pause; playback is controlled by the center and bar buttons, with ±10-second controls seeking only. TV remote, PC mouse, keyboard/D-pad map, scrubber, settings, minimize bar, exports, and localStorage keys remain behaviorally unchanged.
+
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build on Node 20; confirm `dist/_redirects`; preserve all existing backend/security tests. Add resolver tests for all four device kinds and assert non-phone kinds retain `toggle-play`. Record phone surface/center/seeking and TV/PC regression checks as **VERIFY ON DEVICE**. Freeze `MediaPlayer.tsx` immediately afterward.
+
+**Commit:** `T12.87: Mobile tap shows controls only — center button owns play/pause (owner-authorized exception #3) — gate passed`
 
 ## T12.88 — Mobile exception parity and final player freeze
 
