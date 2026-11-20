@@ -365,7 +365,13 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T12.89 — Schema proof, deploy runbooks, proxy validation, and provenance
 
-**Scope:** produce schema proof with `verify_schema.py`, correct deployment runbook instructions, validate proxy configuration, and document deployment provenance. F-01 and F-02 code fixes are closed by T12.81 and T12.82; do not reassign those code changes here.
+**Files:** `backend/scripts/verify_schema.py` (new), `backend/tests/test_verify_schema.py` (new), `backend/app/config.py`, `backend/tests/test_config_validation.py`, `deploy/README.md`, `.env.example` (comments only), `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+**Scope:** add a read-only SQLAlchemy inspection tool comparing the live database with `Base.metadata` for tables, columns/types, nullability, server defaults, indexes, primary keys, and unique constraints; support the configured app engine for Neon Direct and temporary SQLite regression tests. Report drift and exit nonzero without mutating schema/data; identify the historical T0.7 `family_members` gap and `create_all()` boot behavior. Validate proxy scheme and numeric port (1–65535) whenever a proxy host is configured. Correct the runbook's target-process environment loading, backup row counts, mandatory schema pre/post-boot checks, `ProtectSystem=strict` session write path, and A6/A7 provenance controls; GitHub `main` is authoritative and the stale bundle remains quarantine-only pending T12.91. F-01 and F-02 code fixes are closed by T12.81 and T12.82; do not reassign those code changes here.
+
+**Gate:** full backend `.venv\Scripts\python -m pytest -q`, `.venv\Scripts\python -m compileall -q app`, and `.venv\Scripts\pip check`; frontend on Node 20: `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and confirm `dist/_redirects`; inspect final diff for no dependency or `MediaPlayer.tsx` changes. Live Neon/VPS schema validation is **VERIFY ON VPS**.
+
+**Commit:** `T12.89: Schema proof tooling + runbook env/row-count fixes + proxy validation — gate passed`
 
 ## T12.90 — Reliability hardening and clean-checkout freeze candidate
 
@@ -383,7 +389,7 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 Re-scoped: the old "before T2" wording is historical (dev schema work already gated). The hard boundary now is the FIRST boot against production Neon.
 * Run `deploy/backup-neon.sh` (direct endpoint; client ≥ Neon major). Verify non-empty + "dump complete". **Copy off-VPS** (scp to your PC).
-* Record Neon project/branch/region + row counts (users, family_members, files, login_codes, refresh_tokens, guest_credentials).
+* Record Neon project/branch/region + row counts (users, family_members, files, login_codes, guest_credentials, watch_progress).
 * Session dir: fresh install → nothing yet; back up after first boot. Existing deployment → tar + off-host, 0600. (Bot sessions re-auth from token if lost — still back up.)
 * Write restore procedure (stop service → `gunzip -c | psql DIRECT_URL` → restart → reconcile) into `deploy/BACKUP_LOG.md` with evidence. Restore drill on a Neon branch = strongly recommended.
 **Commit (docs-only):** `T0: Backups verified — evidence recorded` · PROGRESS: tick T0, Current Task → T15.

@@ -12,6 +12,10 @@ Hearth is a private family media library backed by Telegram and Neon PostgreSQL.
 - `/var/backups/hearth/` — `0700 hearth:hearth`
 
 Run one Uvicorn worker on `127.0.0.1:8000`; Caddy is the only public HTTP entry.
+The systemd unit uses `ProtectSystem=strict`; keep
+`TELEGRAM_SESSION_DIR=/var/lib/hearth/session` in the service environment and
+`ReadWritePaths=/var/lib/hearth/session` in the unit so the bot session can
+persist without broadening filesystem writes.
 
 ## 2. IPv6-only Preflight — Mandatory Before Deploy
 
@@ -83,6 +87,17 @@ test "$(git rev-parse HEAD)" = "<RELEASE_SHA>"
 ```
 
 For the tarball or git-bundle fallback, extract or restore it at `/opt/hearth/app`, then verify `git rev-parse HEAD` or preserve the release evidence.
+
+### Release provenance and incident controls (A6/A7)
+
+GitHub `main` is the source of truth. Deploy only a reviewed, pinned release
+SHA from that provenance. Keep bundles outside every working tree; never add a
+bundle as a Git remote. Do not make a hotfix from detached `HEAD` unless a
+named branch or tag is pinned first. Append every deployment attempt and its
+result to `/var/log/hearth-deploys.log`.
+
+The stale `/opt/hearth/hearth-v1.0-rc.bundle` at `7629f0a` is quarantine-only
+and must not be used as a source or release until T12.91 resolves it.
 
 Create the runtime virtualenv:
 
@@ -179,20 +194,37 @@ gunzip -c /var/backups/hearth/hearth_*.sql.gz | tail -n 5
 scp -r hearth-vps:/var/backups/hearth/ <pc-backup-directory>/
 ```
 
-Record the Neon project, branch, region, and row counts for `users`, `family_members`, `files`, `login_codes`, `refresh_tokens`, and `guest_credentials`. If a Telegram session directory already exists, back it up with mode `0600`.
+Record the Neon project, branch, region, and row counts for `users`,
+`family_members`, `files`, `login_codes`, `guest_credentials`, and
+`watch_progress`. If a Telegram session directory already exists, back it up
+with mode `0600`.
 
 Do not boot the service until the backup is verified and off-host.
 
-## 7. Database Smoke and First Boot
-
-Load environment values and run the database smoke test:
+After the verified backup, run `verify_schema.py` as a mandatory read-only
+pre-boot release check from `backend/`:
 
 ```bash
 cd /opt/hearth/app/backend
-set -a
-. /etc/hearth/hearth.env
-set +a
-sudo -u hearth .venv/bin/python scripts/smoke_db.py
+sudo -u hearth bash -c 'set -a; . /etc/hearth/hearth.env; set +a; exec .venv/bin/python scripts/verify_schema.py'
+```
+
+Keep its output with the deployment evidence. The historical T0.7 baseline
+lacked `family_members`; `init_db()` uses `create_all()` at boot to add missing
+tables. If that known table is missing, proceed only after the backup is
+verified and let the normal boot create it; do not make manual schema changes.
+Any other pre-boot drift requires investigation before proceeding. Run the
+same verifier after boot and require a clean result before accepting the
+release.
+
+## 7. Database Smoke and First Boot
+
+Run the database smoke test with environment loading inside the target service
+process:
+
+```bash
+cd /opt/hearth/app/backend
+sudo -u hearth bash -c 'set -a; . /etc/hearth/hearth.env; set +a; exec .venv/bin/python scripts/smoke_db.py'
 ```
 
 Expected output: `SELECT 1 -> 1`.
@@ -208,6 +240,8 @@ sudo journalctl -u hearth -f
 
 The first boot runs `init_db` DDL with startup sync disabled. Telegram must connect.
 Uvicorn access log is disabled (`--no-access-log`) because it would record signed stream tokens (`?t=`) in journald. Caddy logs all non-stream requests; `/api/stream/*` is intentionally unlogged (`skip_log`). Application logs never contain tokens.
+After the first boot or each release boot, repeat the mandatory schema check
+from §6 and require no drift before considering the release accepted.
 
 ## 8. Caddy and DuckDNS
 
