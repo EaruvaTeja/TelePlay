@@ -48,6 +48,7 @@ from .telegram import (
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+_PROCESS_STARTED_AT = time.monotonic()
 
 # Video extensions for file type detection
 VIDEO_EXTS = {
@@ -84,6 +85,10 @@ _DB_WAKING_MESSAGE = (
 )
 
 
+class TelegramSyncLookupError(RuntimeError):
+    """A Telegram-side sync lookup failed, rather than a database operation."""
+
+
 async def _reply_db_waking(
     target: Message,
     *,
@@ -95,6 +100,20 @@ async def _reply_db_waking(
     )
     send = target.edit if edit else target.reply
     await send(message, reply_markup=markup)
+
+
+def _process_uptime() -> str:
+    elapsed = max(0, int(time.monotonic() - _PROCESS_STARTED_AT))
+    days, remainder = divmod(elapsed, 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes, seconds = divmod(remainder, 60)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
 
 
 def format_size(size_bytes: int) -> str:
@@ -506,8 +525,14 @@ async def guest_command(client, message: Message):
     arg = message.command[1].lower() if len(message.command) > 1 else ""
 
     if arg == "status":
-        async with async_session() as db:
-            cred = await db.get(GuestCredential, 1)
+        try:
+            async with async_session() as db:
+                cred = await db.get(GuestCredential, 1)
+        except _DB_CONNECTIVITY_ERRORS as exc:
+            logger.warning("Guest status database failure (%s)", type(exc).__name__)
+            await _reply_db_waking(message)
+            return
+
         now = datetime.utcnow()
         if not cred or not cred.pin_hash or not cred.expires_at:
             text = "🚫 Guest access is currently off."
@@ -517,29 +542,34 @@ async def guest_command(client, message: Message):
             text = f"🎟 Guest PIN is active, expires at {cred.expires_at}."
         return await message.reply(text)
 
-    async with async_session() as db:
-        cred = await db.get(GuestCredential, 1)
-        if not cred:
-            cred = GuestCredential(id=1, version=0)
-            db.add(cred)
+    try:
+        async with async_session() as db:
+            cred = await db.get(GuestCredential, 1)
+            if not cred:
+                cred = GuestCredential(id=1, version=0)
+                db.add(cred)
 
-        cred.version += 1
+            cred.version += 1
 
-        if arg == "off":
-            cred.pin_hash, cred.expires_at = None, None
-            text = "🚫 Guest access disabled."
-        else:
-            pin = "".join(secrets.choice("0123456789") for _ in range(6))
-            cred.pin_hash = hash_pin(pin)
-            cred.expires_at = datetime.utcnow() + timedelta(
-                hours=settings.guest_pin_hours
-            )
-            text = (
-                f"🎟 **Guest PIN:** `{pin}`\n\n"
-                f"Valid for {settings.guest_pin_hours} hours. Old guest sessions were ended."
-            )
+            if arg == "off":
+                cred.pin_hash, cred.expires_at = None, None
+                text = "🚫 Guest access disabled."
+            else:
+                pin = "".join(secrets.choice("0123456789") for _ in range(6))
+                cred.pin_hash = hash_pin(pin)
+                cred.expires_at = datetime.utcnow() + timedelta(
+                    hours=settings.guest_pin_hours
+                )
+                text = (
+                    f"🎟 **Guest PIN:** `{pin}`\n\n"
+                    f"Valid for {settings.guest_pin_hours} hours. Old guest sessions were ended."
+                )
 
-        await db.commit()
+            await db.commit()
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Guest access database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
 
     revoke_guest_tokens()
     limiter.stop_role("guest")
@@ -553,13 +583,18 @@ async def users_command(client, message: Message):
     if message.from_user.id != settings.admin_telegram_id:
         return await message.reply("Owner only.")
 
-    async with async_session() as db:
-        result = await db.execute(
-            select(FamilyMember)
-            .where(FamilyMember.active == True)  # noqa: E712
-            .order_by(FamilyMember.added_at)
-        )
-        members = result.scalars().all()
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(FamilyMember)
+                .where(FamilyMember.active == True)  # noqa: E712
+                .order_by(FamilyMember.added_at)
+            )
+            members = result.scalars().all()
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Users command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
 
     if not members:
         return await message.reply("No active family members.")
@@ -612,24 +647,29 @@ async def user_add_command(client, message: Message):
     except ValueError:
         return await message.reply("❌ Invalid telegram ID.")
 
-    async with async_session() as db:
-        member = await _get_family_member(db, telegram_id)
-        if member is None:
-            db.add(
-                FamilyMember(
-                    telegram_id=telegram_id, is_owner=False, active=True
+    try:
+        async with async_session() as db:
+            member = await _get_family_member(db, telegram_id)
+            if member is None:
+                db.add(
+                    FamilyMember(
+                        telegram_id=telegram_id, is_owner=False, active=True
+                    )
                 )
-            )
-        else:
-            member.active = True
-            member.is_owner = False
+            else:
+                member.active = True
+                member.is_owner = False
 
-        result = await db.execute(select(User).where(User.telegram_id == telegram_id))
-        user = result.scalar_one_or_none()
-        if user is not None:
-            user.role = "admin"
+            result = await db.execute(select(User).where(User.telegram_id == telegram_id))
+            user = result.scalar_one_or_none()
+            if user is not None:
+                user.role = "admin"
 
-        await db.commit()
+            await db.commit()
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("User add database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
 
     await message.reply("Added")
 
@@ -648,8 +688,13 @@ async def user_remove_command(client, message: Message):
     except ValueError:
         return await message.reply("❌ Invalid telegram ID.")
 
-    async with async_session() as db:
-        ok = await _remove_family_member(db, telegram_id)
+    try:
+        async with async_session() as db:
+            ok = await _remove_family_member(db, telegram_id)
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("User remove database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
 
     if ok:
         await message.reply("Removed and sessions killed")
@@ -663,7 +708,12 @@ async def sessions_command(client, message: Message):
     if message.from_user.id != settings.admin_telegram_id:
         return await message.reply("Owner only.")
 
-    sessions = limiter.active()
+    try:
+        sessions = limiter.active()
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Sessions command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
     if not sessions:
         return await message.reply("No active playback sessions.")
 
@@ -788,12 +838,17 @@ async def login_command(client, message: Message):
 @tg_client.on_message(filters.command("logout_all") & filters.private)
 async def logout_all_command(client, message: Message):
     """Invalidate all active sessions (with confirmation)."""
-    await get_or_create_user(
-        message.from_user.id,
-        message.from_user.username,
-        message.from_user.first_name,
-        message.from_user.last_name,
-    )
+    try:
+        await get_or_create_user(
+            message.from_user.id,
+            message.from_user.username,
+            message.from_user.first_name,
+            message.from_user.last_name,
+        )
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Logout-all command database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(message)
+        return
 
     await message.reply(
         "⚠️ **Confirm Global Logout**\n\nAre you sure you want to log out from **ALL** devices?",
@@ -830,8 +885,15 @@ async def sync_command(client, message: Message):
     )
     try:
         n = await sync_with_channel(confirm=confirm)
+    except TelegramSyncLookupError as exc:
+        logger.error("Sync Telegram lookup failed (%s)", type(exc).__name__)
+        return await status.edit("⚠️ Sync failed; check server logs before retrying.")
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Sync database failure (%s)", type(exc).__name__)
+        await _reply_db_waking(status, edit=True)
+        return
     except Exception as e:
-        logger.error("Sync command failed: %s", e, exc_info=True)
+        logger.error("Sync command failed (%s)", type(e).__name__)
         return await status.edit("⚠️ Sync failed; check server logs before retrying.")
 
     if confirm:
@@ -857,13 +919,14 @@ async def sync_with_channel(*, confirm: bool = True) -> int:
                     settings.telegram_storage_channel_id,
                     message_ids,
                 )
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.warning(
                     "Sync lookup failed for batch starting at file_id=%s; "
-                    "no rows changed",
+                    "no rows changed (%s)",
                     batch[0].id,
+                    type(exc).__name__,
                 )
-                raise
+                raise TelegramSyncLookupError(str(exc)) from exc
             if not isinstance(msgs, (list, tuple)):
                 raise RuntimeError("Telegram returned an invalid sync batch response")
 
@@ -1185,7 +1248,16 @@ async def handle_callback(client, callback: CallbackQuery):
     sender_id = callback.from_user.id
 
     if data == "server_status":
-        if sender_id not in settings.auth_users:
+        try:
+            active_member = await is_active_member(sender_id)
+        except _DB_CONNECTIVITY_ERRORS as exc:
+            logger.warning(
+                "Server status membership lookup failed (%s)", type(exc).__name__
+            )
+            # Bootstrap owners retain this read-only probe during a DB outage.
+            active_member = sender_id in settings.auth_users
+
+        if not active_member:
             await callback.answer("Unauthorized", show_alert=True)
             return
 
@@ -1195,17 +1267,26 @@ async def handle_callback(client, callback: CallbackQuery):
 
         try:
             await asyncio.wait_for(probe_database(), timeout=8)
-        except Exception as exc:
+        except _DB_CONNECTIVITY_ERRORS as exc:
             logger.warning(
                 "Server status database probe failed (%s)", type(exc).__name__
             )
             await callback.answer(
-                "⏳ Still waking up — please try again in ~30 seconds.",
+                "🔴 Server status: WAKING/DOWN — database not ready "
+                f"(~30s to wake). Try again shortly. Uptime: {_process_uptime()}.",
                 show_alert=True,
             )
         else:
+            if getattr(tg_client, "is_connected", False):
+                status_message = (
+                    "🟢 Server status: ACTIVE — database ready, bot connected."
+                )
+            else:
+                status_message = (
+                    "🟡 Server status: ACTIVE (DB) — bot reconnecting."
+                )
             await callback.answer(
-                "✅ Server is up — database ready. Please re-forward your file.",
+                f"{status_message} Uptime: {_process_uptime()}.",
                 show_alert=True,
             )
         return
@@ -1214,8 +1295,16 @@ async def handle_callback(client, callback: CallbackQuery):
     # Every callback requires an active family membership. Destructive actions
     # additionally require the owner (admin_telegram_id). Revoked/removed users
     # (active=False) are never allowed to execute a callback.
-    async with async_session() as db:
-        member = await _get_family_member(db, sender_id)
+    try:
+        async with async_session() as db:
+            member = await _get_family_member(db, sender_id)
+    except _DB_CONNECTIVITY_ERRORS as exc:
+        logger.warning("Callback membership lookup failed (%s)", type(exc).__name__)
+        await callback.answer(
+            "⏳ Database is waking up — try again in ~30 seconds.",
+            show_alert=True,
+        )
+        return
     if not member or not member.active:
         await callback.answer("Unauthorized", show_alert=True)
         return

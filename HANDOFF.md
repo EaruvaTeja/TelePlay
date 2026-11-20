@@ -51,10 +51,11 @@ This v2 handoff supersedes the T12-era handoff for ALL remaining work.
 * Known OPEN items → fixed by **T12.1** only: `SYNC_ON_STARTUP` ignored in `main.py`; `sync_with_channel()` lacks a mass-deletion safety guard; `/help` omits TTLs and wrongly lists photos; `gate4_check.py` help says 6 digits; `scripts/smoke_db.py` duplicate imports.
 * Deferred (P2, post-launch, NOT deploy blockers): `app/__init__.py` eager import of `main`; Folder-era schema remnants (do NOT drop columns/tables now); `test_schema_migration.py` teardown fragility (leave unless it breaks).
 
-## RE-OPENED — 2026-11-20 owner authorization supersedes do-not-refix for F-01/F-02 only
+## F-01/F-02 closure status — after T12.81/T12.82
 
-* **F-01 — RE-OPENED: family ver/membership on the media path.** `CONFIRMED` by source evidence: `create_stream_token()` emits no `ver`; `/playback/start` passes `uid=User.id` while `_auth_stream` queries `User.telegram_id`; therefore the media-path family identity can be misbound between database identity and Telegram identity. This item is no longer treated as a closed baseline fact and is assigned to the T12.89/T12.91/T12.92 incident-remediation sequence.
-* **F-02 — RE-OPENED: `family_members` as the single source of truth.** `CONFIRMED` by source evidence: `check_auth()` uses static `AUTH_USERS`; `verify-code` mints `role=admin` for existing users without a membership check. This item is no longer treated as a closed baseline fact and is assigned to the T12.89/T12.91/T12.92 incident-remediation sequence. No future task may preserve static-owner or mint-admin behavior outside `family_members`.
+* **F-01 — CLOSED IN CODE (T12.81), CONFIRMED by source and regression tests:** family stream tokens carry `ver`, bind `uid` to `User.id`, and require current version plus active membership before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs.
+* **F-02 — CLOSED IN CODE (T12.82), CONFIRMED by source and regression tests:** `family_members.active` governs bot/API access, including existing-user verify-code; `AUTH_USERS` remains only the bootstrap fallback on DB-connectivity errors. **VERIFY ON VPS:** live member add/remove and verify-code behavior, including DB-wake recovery.
+* The 2026-11-20 owner authorization superseded the prior do-not-refix instruction for F-01/F-02 only; both code remediations are complete. T12.89/T12.90/T12.91/T12.92 cover the remaining schema, reliability, provenance, VPS-resource, and live-evidence work, not reassignment of these completed fixes.
 
 ## 2026-11-20 post-incident state
 

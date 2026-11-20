@@ -68,6 +68,12 @@ class FakeMessage:
         self.stop_propagated = True
 
 
+class FakeCommandMessage(FakeMessage):
+    async def reply(self, text, **kwargs):
+        self.replies.append((text, kwargs))
+        return self.status_message
+
+
 class FakeCallback:
     def __init__(self, sender_id, data="server_status"):
         self.from_user = SimpleNamespace(id=sender_id)
@@ -96,6 +102,33 @@ class FakeProbeSession:
             raise self.error
         if self.wait_forever:
             await asyncio.Event().wait()
+
+
+class FailingDbSession:
+    def __init__(self, error=None):
+        self.error = error or _db_error()
+
+    async def __aenter__(self):
+        raise self.error
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
+class FakeSyncRowsSession:
+    def __init__(self, rows):
+        self.rows = rows
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    async def execute(self, statement):
+        return SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: self.rows)
+        )
 
 
 class FailingCommitSession:
@@ -171,6 +204,22 @@ def _assert_status_button(markup):
 
 def _db_error():
     return OperationalError("SELECT 1", {}, OSError("database unavailable"))
+
+
+def _owner_message(command):
+    message = FakeCommandMessage(has_video=False, command=command)
+    message.from_user.id = bot.settings.admin_telegram_id
+    return message
+
+
+def _assert_wake_reply(message, *, edited=False):
+    text, kwargs = (
+        message.status_message.edits[-1]
+        if edited
+        else message.replies[-1]
+    )
+    assert text == DB_WAKING_MESSAGE
+    _assert_status_button(kwargs["reply_markup"])
 
 
 def test_upload_user_lookup_db_failure_replies_with_wake_up_button(monkeypatch, caplog):
@@ -341,31 +390,47 @@ def test_database_fallback_does_not_authorize_non_bootstrap_user(monkeypatch):
 
 def test_server_status_authorized_db_up_answers_ready(monkeypatch):
     session = FakeProbeSession()
+    monkeypatch.setattr(bot, "is_active_member", AsyncMock(return_value=True))
     monkeypatch.setattr(bot, "async_session", lambda: session)
+    monkeypatch.setattr(bot, "tg_client", SimpleNamespace(is_connected=True))
     callback = FakeCallback(bot.settings.auth_users[0])
 
     asyncio.run(bot.handle_callback(None, callback))
 
     assert session.statements == ["SELECT 1"]
-    assert callback.answers == [
-        ("✅ Server is up — database ready. Please re-forward your file.", True)
-    ]
+    answer, show_alert = callback.answers[0]
+    assert answer.startswith(
+        "🟢 Server status: ACTIVE — database ready, bot connected."
+    )
+    assert "Uptime:" in answer
+    assert len(answer) <= 200
+    assert show_alert is True
     assert "server_status" not in bot.DESTRUCTIVE_CALLBACKS
 
 
 def test_server_status_database_failure_answers_waking(monkeypatch):
+    async def database_unavailable(telegram_id):
+        raise _db_error()
+
+    monkeypatch.setattr(bot, "is_active_member", database_unavailable)
     session = FakeProbeSession(error=_db_error())
     monkeypatch.setattr(bot, "async_session", lambda: session)
     callback = FakeCallback(bot.settings.auth_users[0])
 
     asyncio.run(bot.handle_callback(None, callback))
 
-    assert callback.answers == [
-        ("⏳ Still waking up — please try again in ~30 seconds.", True)
-    ]
+    answer, show_alert = callback.answers[0]
+    assert answer.startswith(
+        "🔴 Server status: WAKING/DOWN — database not ready (~30s to wake). "
+        "Try again shortly."
+    )
+    assert "Uptime:" in answer
+    assert len(answer) <= 200
+    assert show_alert is True
 
 
 def test_server_status_timeout_is_bounded_and_answers_waking(monkeypatch):
+    monkeypatch.setattr(bot, "is_active_member", AsyncMock(return_value=True))
     session = FakeProbeSession(wait_forever=True)
     monkeypatch.setattr(bot, "async_session", lambda: session)
     real_wait_for = asyncio.wait_for
@@ -379,9 +444,14 @@ def test_server_status_timeout_is_bounded_and_answers_waking(monkeypatch):
 
     asyncio.run(bot.handle_callback(None, callback))
 
-    assert callback.answers == [
-        ("⏳ Still waking up — please try again in ~30 seconds.", True)
-    ]
+    answer, show_alert = callback.answers[0]
+    assert answer.startswith(
+        "🔴 Server status: WAKING/DOWN — database not ready (~30s to wake). "
+        "Try again shortly."
+    )
+    assert "Uptime:" in answer
+    assert len(answer) <= 200
+    assert show_alert is True
 
 
 def test_server_status_rejects_non_whitelisted_user_before_database(monkeypatch):
@@ -389,9 +459,143 @@ def test_server_status_rejects_non_whitelisted_user_before_database(monkeypatch)
         raise AssertionError("unauthorized status request must not probe the database")
 
     monkeypatch.setattr(bot, "async_session", unexpected_database_access)
+    monkeypatch.setattr(bot, "is_active_member", AsyncMock(return_value=False))
     sender_id = max(bot.settings.auth_users) + 1
     callback = FakeCallback(sender_id)
 
     asyncio.run(bot.handle_callback(None, callback))
 
     assert callback.answers == [("Unauthorized", True)]
+
+
+def test_server_status_active_database_with_disconnected_bot(monkeypatch):
+    monkeypatch.setattr(bot, "is_active_member", AsyncMock(return_value=True))
+    monkeypatch.setattr(bot, "async_session", lambda: FakeProbeSession())
+    monkeypatch.setattr(bot, "tg_client", SimpleNamespace(is_connected=False))
+    callback = FakeCallback(bot.settings.auth_users[0])
+
+    asyncio.run(bot.handle_callback(None, callback))
+
+    answer, show_alert = callback.answers[0]
+    assert answer.startswith(
+        "🟡 Server status: ACTIVE (DB) — bot reconnecting."
+    )
+    assert "Uptime:" in answer
+    assert len(answer) <= 200
+    assert show_alert is True
+
+
+def test_server_status_database_fallback_does_not_authorize_non_bootstrap_user(
+    monkeypatch,
+):
+    async def database_unavailable(telegram_id):
+        raise _db_error()
+
+    def unexpected_probe():
+        raise AssertionError("non-bootstrap user must not probe the database")
+
+    monkeypatch.setattr(bot, "is_active_member", database_unavailable)
+    monkeypatch.setattr(bot, "async_session", unexpected_probe)
+    callback = FakeCallback(max(bot.settings.auth_users) + 1)
+
+    asyncio.run(bot.handle_callback(None, callback))
+
+    assert callback.answers == [("Unauthorized", True)]
+
+
+def test_callback_membership_gate_db_failure_answers_waking(monkeypatch):
+    monkeypatch.setattr(
+        bot, "async_session", lambda: FailingDbSession(_db_error())
+    )
+    callback = FakeCallback(bot.settings.auth_users[0], data="show_files")
+
+    asyncio.run(bot.handle_callback(None, callback))
+
+    assert callback.answers == [
+        ("⏳ Database is waking up — try again in ~30 seconds.", True)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("handler_name", "command"),
+    [
+        ("guest_status", ["guest", "status"]),
+        ("guest_rotate", ["guest"]),
+        ("guest_off", ["guest", "off"]),
+        ("users", ["users"]),
+        ("user_add", ["user_add", "987654321"]),
+        ("user_remove", ["user_remove", "987654321"]),
+        ("sessions", ["sessions"]),
+    ],
+)
+def test_owner_database_commands_use_wake_reply_and_button(
+    monkeypatch, handler_name, command
+):
+    monkeypatch.setattr(
+        bot, "async_session", lambda: FailingDbSession(_db_error())
+    )
+    if handler_name == "sessions":
+        def fail_active():
+            raise _db_error()
+
+        monkeypatch.setattr(bot.limiter, "active", fail_active)
+
+    message = _owner_message(command)
+    handler = {
+        "guest_status": bot.guest_command,
+        "guest_rotate": bot.guest_command,
+        "guest_off": bot.guest_command,
+        "users": bot.users_command,
+        "user_add": bot.user_add_command,
+        "user_remove": bot.user_remove_command,
+        "sessions": bot.sessions_command,
+    }[handler_name]
+
+    asyncio.run(handler(None, message))
+
+    assert len(message.replies) == 1
+    _assert_wake_reply(message)
+
+
+def test_logout_all_database_failure_uses_wake_reply_and_button(monkeypatch):
+    async def fail_user_lookup(*args, **kwargs):
+        raise _db_error()
+
+    monkeypatch.setattr(bot, "get_or_create_user", fail_user_lookup)
+    message = _owner_message(["logout_all"])
+
+    asyncio.run(bot.logout_all_command(None, message))
+
+    assert len(message.replies) == 1
+    _assert_wake_reply(message)
+
+
+def test_sync_database_failure_uses_wake_reply_and_button(monkeypatch):
+    monkeypatch.setattr(
+        bot, "async_session", lambda: FailingDbSession(_db_error())
+    )
+    message = _owner_message(["sync"])
+
+    asyncio.run(bot.sync_command(None, message))
+
+    _assert_wake_reply(message, edited=True)
+
+
+def test_sync_telegram_failure_keeps_sync_error_message(monkeypatch):
+    row = SimpleNamespace(id=1, channel_message_id=123)
+    monkeypatch.setattr(
+        bot, "async_session", lambda: FakeSyncRowsSession([row])
+    )
+
+    async def telegram_failure(chat_id, message_ids):
+        raise RuntimeError("Telegram offline")
+
+    monkeypatch.setattr(bot.tg_client, "get_messages", telegram_failure)
+    message = _owner_message(["sync"])
+
+    asyncio.run(bot.sync_command(None, message))
+
+    assert message.status_message.edits[-1][0] == (
+        "⚠️ Sync failed; check server logs before retrying."
+    )
+    assert "reply_markup" not in message.status_message.edits[-1][1]
