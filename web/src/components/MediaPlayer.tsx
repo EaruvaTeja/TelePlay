@@ -51,7 +51,7 @@ import {
     ArrowLeft, AlertTriangle, Check, ChevronDown, ChevronUp, Crop, FastForward,
     Film, Gauge, Info, Layers, Loader2, Maximize, Minimize, Monitor, Music,
     Pause, PictureInPicture2, Play, RectangleHorizontal, Rewind, RotateCcw,
-    Settings, Smartphone, Sparkles, StretchHorizontal, Subtitles, Tablet, Tv, Users,
+    Settings, Smartphone, Sparkles, StretchHorizontal, Subtitles, Sun, Tablet, Tv, Users,
     Volume1, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { TelegramFile, formatDuration, useUpdateProgress, useFile, api } from '../lib/api';
@@ -59,9 +59,16 @@ import { useAppStore } from '../lib/store';
 import { getDeviceKind } from '../lib/device';
 import {
     isPhonePlayer,
+    calculateDragValue,
+    clampBrightness,
+    clampVolume,
     resolveSurfaceTap,
+    selectDragSide,
+    shouldClaimVerticalDrag,
+    shouldUseDeviceVolumeButtons,
     shouldUseWebkitFullscreenFallback,
     sliderRatio,
+    type PlayerDragSide,
 } from '../lib/mobilePlayer';
 
 /* ═══════════════════════════ Types & constants ═══════════════════════════ */
@@ -94,7 +101,25 @@ type SessionPhase = 'starting' | 'ready' | 'limited' | 'ended' | 'error';
 type ToastKind = 'info' | 'success' | 'error';
 type Dir = 'left' | 'right' | 'up' | 'down';
 type IconType = typeof Crop;
-interface Prefs { volume: number; muted: boolean; rate: number; aspect: Aspect; subtitleLang: string }
+interface Prefs { volume: number; muted: boolean; brightness: number; rate: number; aspect: Aspect; subtitleLang: string }
+interface GestureIndicatorState {
+    kind: 'brightness' | 'volume';
+    value: number;
+    side: PlayerDragSide;
+    visible: boolean;
+    hintText?: string;
+}
+interface SurfaceGesture {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startValue: number;
+    stageHeight: number;
+    side: PlayerDragSide;
+    controlsVisible: boolean;
+    claimed: boolean;
+    hintText?: string;
+}
 type MutableRef<T> = { current: T | null };
 
 const SPEEDS: readonly number[] = [0.5, 0.75, 1, 1.1, 1.2, 1.25, 1.35, 1.5, 1.75, 2];
@@ -112,7 +137,7 @@ const QUALITIES: { label: string; height: number }[] = [
 ];
 const PREFS_KEY = 'hearth_player_prefs';
 const DEVICE_KEY = 'hearth_device_id';
-const DEFAULT_PREFS: Prefs = { volume: 1, muted: false, rate: 1, aspect: 'fit', subtitleLang: 'off' };
+const DEFAULT_PREFS: Prefs = { volume: 1, muted: false, brightness: 1, rate: 1, aspect: 'fit', subtitleLang: 'off' };
 
 const HIDE_AFTER_MS = 3000;       // controls auto-hide
 const BUFFER_DEBOUNCE_MS = 350;   // a stall must persist this long before the spinner shows
@@ -224,6 +249,7 @@ function loadPrefs(): Prefs {
             return {
                 volume: clamp(Number(p.volume ?? 1), 0, 1),
                 muted: !!p.muted,
+                brightness: clampBrightness(Number(p.brightness ?? 1)),
                 rate: SPEEDS.includes(Number(p.rate)) ? Number(p.rate) : 1,
                 aspect: ASPECT_ORDER.includes(p.aspect as Aspect) ? (p.aspect as Aspect) : 'fit',
                 subtitleLang: typeof p.subtitleLang === 'string' ? p.subtitleLang : 'off',
@@ -637,6 +663,53 @@ const IconBtn = memo(function IconBtn({ label, onClick, icon: Icon, iconClass = 
         </button>
     );
 });
+
+interface GestureIndicatorProps {
+    kind: 'brightness' | 'volume';
+    value: number;
+    side: PlayerDragSide;
+    visible: boolean;
+    hintText?: string;
+    fadeMs: number;
+}
+
+function GestureIndicator({ kind, value, side, visible, hintText, fadeMs }: GestureIndicatorProps) {
+    const Icon = kind === 'brightness'
+        ? Sun
+        : value <= 0 ? VolumeX : value < 0.5 ? Volume1 : Volume2;
+    const horizontalOffset = Math.max(64, (typeof window === 'undefined' ? 0 : window.innerWidth) * 0.14);
+    const sidePosition = side === 'left' ? { left: horizontalOffset } : { right: horizontalOffset };
+
+    return (
+        <div
+            aria-hidden={!visible}
+            className="pointer-events-none absolute top-1/2 z-[60] flex w-12 -translate-y-1/2 flex-col items-center gap-2 rounded-full border px-2.5 py-3 shadow-lg transition-opacity ease-out"
+            style={{
+                ...sidePosition,
+                opacity: visible ? 1 : 0,
+                transitionDuration: `${fadeMs}ms`,
+                backgroundColor: 'rgba(0,0,0,0.45)',
+                borderColor: 'rgba(255,255,255,0.15)',
+                color: 'rgba(255,255,255,0.85)',
+            }}
+        >
+            <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {hintText ? (
+                <span className="text-center text-[10px] leading-tight">{hintText}</span>
+            ) : (
+                <>
+                    <div className="relative h-20 w-1.5 overflow-hidden rounded-full bg-white/20">
+                        <div
+                            className="absolute inset-x-0 bottom-0 rounded-full bg-white/85"
+                            style={{ height: `${value * 100}%` }}
+                        />
+                    </div>
+                    <span className="text-[10px] leading-none">{Math.round(value * 100)}%</span>
+                </>
+            )}
+        </div>
+    );
+}
 
 function Chip({ selected, onClick, children, autofocus = false, disabled = false, title }: {
     selected: boolean; onClick: () => void; children: ReactNode;
@@ -1171,6 +1244,8 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const [isWebkitFullscreen, setIsWebkitFullscreen] = useState(false);
     const [isPiP, setIsPiP] = useState(false);
     const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
+    const [volumeWritable, setVolumeWritable] = useState<boolean | null>(null);
+    const [gestureIndicator, setGestureIndicator] = useState<GestureIndicatorState | null>(null);
     const [resumeToast, setResumeToast] = useState(false);
     const [toasts, setToasts] = useState<{ id: number; msg: string; kind: ToastKind }[]>([]);
     const [role, setRole] = useState<string>('admin');
@@ -1190,6 +1265,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const ctlWrapRef = useRef<HTMLDivElement>(null);
     const topRef = useRef<HTMLDivElement>(null);
     const barRef = useRef<HTMLDivElement>(null);
+    const bottomControlsRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     const scrubberRef = useRef<HTMLDivElement>(null);
@@ -1214,6 +1290,11 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const toastId = useRef(0);
     const holdRef = useRef<{ dir: number; start: number; total: number; last: number } | null>(null);
     const dragRef = useRef(false);
+    const surfaceGestureRef = useRef<SurfaceGesture | null>(null);
+    const indicatorFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const suppressSurfaceClickUntilRef = useRef(0);
+    const volumeWritableRef = useRef<boolean | null>(null);
+    const volumeProbeInProgressRef = useRef(false);
     const durationRef = useRef(0);
     const lastPosRef = useRef(0);
     const lastSavedRef = useRef<{ pos: number; dur: number }>({ pos: -1, dur: -1 });
@@ -1548,6 +1629,34 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         applySubtitleMode();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [prefs]);
+
+    useEffect(() => {
+        if (!phonePlayer || !videoMounted || volumeWritableRef.current !== null) return;
+        const video = videoRef.current;
+        if (!video) return;
+
+        const originalVolume = video.volume;
+        const originalMuted = video.muted;
+        const probeVolume = originalVolume >= 0.5 ? 0.25 : 0.75;
+        let writable = false;
+        volumeProbeInProgressRef.current = true;
+        try {
+            video.volume = probeVolume;
+            writable = Math.abs(video.volume - probeVolume) < 0.001;
+        } catch {
+            writable = false;
+        }
+        try {
+            video.volume = originalVolume;
+            if (Math.abs(video.volume - originalVolume) >= 0.001) writable = false;
+        } catch {
+            writable = false;
+        }
+        video.muted = originalMuted;
+        volumeProbeInProgressRef.current = false;
+        volumeWritableRef.current = writable;
+        setVolumeWritable(writable);
+    }, [phonePlayer, videoMounted]);
 
     // Persist off the hot path (volume drags change prefs many times a second).
     useEffect(() => {
@@ -1908,10 +2017,11 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
 
     const onVolumeChange = () => {
         const v = videoRef.current;
-        if (!v) return;
+        if (!v || volumeProbeInProgressRef.current) return;
         const p = prefsRef.current;
-        if (Math.abs(v.volume - p.volume) > 0.001 || v.muted !== p.muted) {
-            setPrefs(prev => ({ ...prev, volume: v.volume, muted: v.muted }));
+        const volume = volumeWritableRef.current === false ? p.volume : v.volume;
+        if (Math.abs(volume - p.volume) > 0.001 || v.muted !== p.muted) {
+            setPrefs(prev => ({ ...prev, volume, muted: v.muted }));
         }
     };
     const onRateChange = () => {
@@ -2118,7 +2228,111 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         [hideTimer, bufTimer, flashTimer, resumeTimer, seekGateRef].forEach(r => { if (r.current) clearTimeout(r.current); });
         toastTimers.current.forEach(t => clearTimeout(t));
         toastTimers.current.clear();
+        if (indicatorFadeTimer.current) clearTimeout(indicatorFadeTimer.current);
     }, []);
+
+    const onVideoPointerDown = (e: ReactPointerEvent<HTMLVideoElement>) => {
+        const video = videoRef.current;
+        if (!phonePlayer || e.target !== video || !video || !e.isPrimary || e.button !== 0
+            || !isVideo || !src || phase !== 'ready' || video.readyState < 2
+            || buffering || finished || isMinimized || dialogOpen || settingsOpen) return;
+
+        const isInside = (element: HTMLDivElement | null) => {
+            const rect = element?.getBoundingClientRect();
+            return !!rect && e.clientX >= rect.left && e.clientX <= rect.right
+                && e.clientY >= rect.top && e.clientY <= rect.bottom;
+        };
+        if (isInside(topRef.current) || isInside(bottomControlsRef.current)
+            || isInside(barRef.current) || isInside(scrubberRef.current)) return;
+
+        const rect = video.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        const side = selectDragSide(e.clientX, rect.left, rect.width);
+        const startValue = side === 'left'
+            ? prefsRef.current.brightness
+            : prefsRef.current.muted ? 0 : prefsRef.current.volume;
+        surfaceGestureRef.current = {
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            startValue,
+            stageHeight: rect.height,
+            side,
+            controlsVisible,
+            claimed: false,
+        };
+    };
+
+    const finishSurfaceGesture = (pointerId: number, suppressClick: boolean) => {
+        const gesture = surfaceGestureRef.current;
+        if (!gesture || gesture.pointerId !== pointerId) return;
+        surfaceGestureRef.current = null;
+        if (!gesture.claimed) return;
+
+        if (suppressClick) suppressSurfaceClickUntilRef.current = Date.now() + 300;
+        if (gesture.controlsVisible) revealControls();
+        setGestureIndicator(current => current ? { ...current, visible: false } : null);
+        if (indicatorFadeTimer.current) clearTimeout(indicatorFadeTimer.current);
+        indicatorFadeTimer.current = setTimeout(() => {
+            setGestureIndicator(null);
+            indicatorFadeTimer.current = null;
+        }, 800);
+    };
+
+    const onSurfacePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+        const gesture = surfaceGestureRef.current;
+        if (!gesture || gesture.pointerId !== e.pointerId) return;
+        if (!phonePlayer || !isVideo || !src || phase !== 'ready' || buffering || finished
+            || isMinimized || dialogOpen || settingsOpen) {
+            finishSurfaceGesture(e.pointerId, true);
+            return;
+        }
+
+        const deltaX = e.clientX - gesture.startX;
+        const deltaY = e.clientY - gesture.startY;
+        if (!gesture.claimed) {
+            if (!shouldClaimVerticalDrag(deltaX, deltaY)) return;
+            gesture.claimed = true;
+            if (gesture.side === 'right'
+                && shouldUseDeviceVolumeButtons(phonePlayer, volumeWritable)) {
+                gesture.hintText = 'Use device volume buttons';
+            }
+            if (gesture.controlsVisible && hideTimer.current) {
+                clearTimeout(hideTimer.current);
+                hideTimer.current = null;
+            }
+            if (indicatorFadeTimer.current) clearTimeout(indicatorFadeTimer.current);
+            try { videoRef.current?.setPointerCapture(e.pointerId); } catch { /* older WebViews */ }
+        }
+
+        const value = gesture.hintText
+            ? gesture.startValue
+            : gesture.side === 'left'
+                ? clampBrightness(calculateDragValue(gesture.startValue, gesture.startY, e.clientY, gesture.stageHeight))
+                : clampVolume(calculateDragValue(gesture.startValue, gesture.startY, e.clientY, gesture.stageHeight));
+
+        if (!gesture.hintText) {
+            if (gesture.side === 'left') {
+                if (Math.abs(value - prefsRef.current.brightness) > 0.001) patchPrefs({ brightness: value });
+            } else {
+                const muted = value === 0;
+                if (Math.abs(value - prefsRef.current.volume) > 0.001 || muted !== prefsRef.current.muted) {
+                    patchPrefs({ volume: value, muted });
+                }
+            }
+        }
+        setGestureIndicator({
+            kind: gesture.side === 'left' ? 'brightness' : 'volume',
+            value,
+            side: gesture.side,
+            visible: true,
+            hintText: gesture.hintText,
+        });
+        e.preventDefault();
+    };
+
+    const onSurfacePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => finishSurfaceGesture(e.pointerId, true);
+    const onSurfacePointerCancel = (e: ReactPointerEvent<HTMLDivElement>) => finishSurfaceGesture(e.pointerId, false);
 
     /* ── Root pointer handlers ── */
     const isPhoneVideoSurface = (target: EventTarget | null) =>
@@ -2141,6 +2355,19 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             const btn = (e.target as HTMLElement).closest?.('button');
             if (btn && btn.closest('[data-hp-bar], [data-hp-top]')) root.focus({ preventScroll: true });
         }
+    };
+    const onVideoSurfaceClick = () => {
+        if (suppressSurfaceClickUntilRef.current > Date.now()) {
+            suppressSurfaceClickUntilRef.current = 0;
+            return;
+        }
+        suppressSurfaceClickUntilRef.current = 0;
+        if (resolveSurfaceTap(playerKind) === 'toggle-controls') {
+            if (controlsVisible) hideControlsNow();
+            else revealControls();
+            return;
+        }
+        togglePlay();
     };
 
     /* ── Derived ── */
@@ -2210,6 +2437,9 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                 : { cursor: playing && !controlsVisible ? 'none' : 'default' }}
             onMouseMove={!isMinimized ? onRootMouseMove : undefined}
             onTouchStart={!isMinimized ? onRootTouchStart : undefined}
+            onPointerMove={!isMinimized && phonePlayer && isVideo ? onSurfacePointerMove : undefined}
+            onPointerUp={!isMinimized && phonePlayer && isVideo ? onSurfacePointerUp : undefined}
+            onPointerCancel={!isMinimized && phonePlayer && isVideo ? onSurfacePointerCancel : undefined}
             onClick={!isMinimized ? onRootClick : undefined}
             onFocusCapture={onFocusCapture}
             onContextMenu={(e) => e.preventDefault()}
@@ -2226,19 +2456,16 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                         ref={videoRef}
                         src={src ?? undefined}
                         className="h-full w-full"
-                        style={{ objectFit: ASPECT_FIT[prefs.aspect] }}
+                        style={{
+                            objectFit: ASPECT_FIT[prefs.aspect],
+                            touchAction: phonePlayer && isVideo ? 'none' : undefined,
+                        }}
                         playsInline
                         preload="auto"
                         crossOrigin={subs.length > 0 ? 'anonymous' : undefined}
                         controls={false}
-                        onClick={() => {
-                            if (resolveSurfaceTap(playerKind) === 'toggle-controls') {
-                                if (controlsVisible) hideControlsNow();
-                                else revealControls();
-                                return;
-                            }
-                            togglePlay();
-                        }}
+                        onPointerDown={phonePlayer && isVideo ? onVideoPointerDown : undefined}
+                        onClick={onVideoSurfaceClick}
                         onDoubleClick={fsSupported && !phonePlayer ? toggleFullscreen : undefined}
                         onPlay={() => {
                             setPlaying(true);
@@ -2285,6 +2512,17 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                             />
                         ))}
                     </video>
+                )}
+
+                {videoMounted && isVideo && phonePlayer && (
+                    <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 z-[12] bg-black"
+                        style={{ opacity: 1 - prefs.brightness }}
+                    />
+                )}
+                {gestureIndicator && phonePlayer && isVideo && !isMinimized && (
+                    <GestureIndicator {...gestureIndicator} fadeMs={800} />
                 )}
 
                 {videoMounted && !isVideo && (
@@ -2453,6 +2691,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                         </div>
 
                         <div
+                            ref={bottomControlsRef}
                             className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-[3.5%] pt-12"
                             style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
                         >
