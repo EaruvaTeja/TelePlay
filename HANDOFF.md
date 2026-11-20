@@ -19,6 +19,12 @@ This v2 handoff supersedes the T12-era handoff for ALL remaining work.
 3. **Frozen File Mandate:** `web/src/components/MediaPlayer.tsx` is **FROZEN** — byte-identical, `git diff --stat -- web/src/components/MediaPlayer.tsx` must be empty, except for the one-time T12.3 owner authorization below. Preserve every export it imports: from `web/src/lib/api.ts` → `TelegramFile`, `formatDuration`, `useUpdateProgress`, `useFile`, `api`; from `web/src/lib/store.ts` → `useAppStore`. Preserve localStorage keys `hearth_player_prefs` and `hearth_device_id` (`DEVICE_ID_KEY`).
 
    **2026-11-19 — OWNER-AUTHORIZED one-time exception for T12.3:** `MediaPlayer.tsx` SPEEDS constant (+ minimal speed-chip layout if required) to provide 10 playback speeds. Freeze resumes for all subsequent tasks; all other `MediaPlayer.tsx` content remains untouched.
+
+   **2026-11-20 — OWNER-AUTHORIZED one-time exceptions for T12.86/T12.87:** two mobile-only additions are authorized.
+   * **Exception #2 (T12.86):** mobile-only auto-landscape. TV/PC behavior must remain byte-identical in behavior, exports and `localStorage` keys remain unchanged.
+   * **Exception #3 (T12.87):** mobile-only tap on the player = controls, while a center control button toggles play/pause. TV/PC behavior must remain byte-identical in behavior, exports and `localStorage` keys remain unchanged.
+
+   Each mobile exception must freeze independently after its task. No exception may change desktop or TV behavior, remove or rename exports, or add/remove/rename `hearth_player_prefs` or `hearth_device_id` (`DEVICE_ID_KEY`).
 4. **Strict Scope Lock (locked product):** Web-only, flat shared library (no folders/search/multi-select/rename/move/QR/public links/transcoding/Redis/Android). Family = 8-digit one-time code (5 min TTL). Guest = 6-digit PIN, 24 h, play-only, no refresh token. **Max 2 concurrent streams HOUSEHOLD-WIDE** (1 guest + 1 family = full; 3rd device → 409 popup, zero bytes). 5 login attempts/device/hour (+20/IP/hour). Telegram-first delete with DB compensation. Samsung Tizen TV browser is the PRIMARY client.
 5. **Preserve Known-Good Code:** auth-before-cache in `routers/streaming.py`; atomic one-time login-code consumption (`DELETE … RETURNING`); fail-closed config validators; HMAC-peppered guest PIN + constant-time compare; family `ver`/membership + guest `gv` revocation on the media path; Telegram-first delete & upload compensation; filename sanitizer and `escape_like` (already correct — never run "repair" scripts on them).
 6. **Gate Verification Required:** Run the task's Gate from `PLAN.md` yourself before committing. Never weaken or delete an existing security test to make a suite pass. Cross-platform note: `caddy validate` / `systemd-analyze verify` may not exist on the dev machine — run them if available, otherwise do a documented static review; live validation is MANDATORY on the VPS in T15 before reload.
@@ -44,6 +50,19 @@ This v2 handoff supersedes the T12-era handoff for ALL remaining work.
 * `/logout` = this device only; `/logout-all` = `auth_version++` + `stop_owner`. Guest revocation (`/guest off`, rotation, 24 h expiry) enforced server-side on the media path.
 * Known OPEN items → fixed by **T12.1** only: `SYNC_ON_STARTUP` ignored in `main.py`; `sync_with_channel()` lacks a mass-deletion safety guard; `/help` omits TTLs and wrongly lists photos; `gate4_check.py` help says 6 digits; `scripts/smoke_db.py` duplicate imports.
 * Deferred (P2, post-launch, NOT deploy blockers): `app/__init__.py` eager import of `main`; Folder-era schema remnants (do NOT drop columns/tables now); `test_schema_migration.py` teardown fragility (leave unless it breaks).
+
+## RE-OPENED — 2026-11-20 owner authorization supersedes do-not-refix for F-01/F-02 only
+
+* **F-01 — RE-OPENED: family ver/membership on the media path.** `CONFIRMED` by source evidence: `create_stream_token()` emits no `ver`; `/playback/start` passes `uid=User.id` while `_auth_stream` queries `User.telegram_id`; therefore the media-path family identity can be misbound between database identity and Telegram identity. This item is no longer treated as a closed baseline fact and is assigned to the T12.89/T12.91/T12.92 incident-remediation sequence.
+* **F-02 — RE-OPENED: `family_members` as the single source of truth.** `CONFIRMED` by source evidence: `check_auth()` uses static `AUTH_USERS`; `verify-code` mints `role=admin` for existing users without a membership check. This item is no longer treated as a closed baseline fact and is assigned to the T12.89/T12.91/T12.92 incident-remediation sequence. No future task may preserve static-owner or mint-admin behavior outside `family_members`.
+
+## 2026-11-20 post-incident state
+
+* **CONFIRMED — incident outcome:** the VPS origin was repointed to GitHub; the live deployment SHA is `c0aa30f28408add60574de9f9385912131b5524a`, deployed under tag `deploy-T12.7`; the silent-bot condition was fixed by unconditional bot-module import in lifespan.
+* **CONFIRMED — egress state:** WARP SOCKS5 `127.0.0.1:40000` is present for GitHub IPv4 egress.
+* **CONFIRMED — stale artifact:** stale bundle `/opt/hearth/hearth-v1.0-rc.bundle` remains at SHA `7629f0a`.
+* **CONFIRMED — VPS resources:** disk is 75% used (3.0 GB of 4.0 GB); RAM is 210 MB used of 512 MB.
+* **VERIFY ON VPS:** actual origin HEAD, service liveness, WARP routing, bundle removal/archive, and live memory/disk measurements must be rechecked before T15.
 
 ---
 

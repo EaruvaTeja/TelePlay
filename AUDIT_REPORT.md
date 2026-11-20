@@ -240,3 +240,56 @@ Owner reports that some videos do not play even though backend logs show HTTP 20
 - **Gates — CONFIRMED:** Python 3.13.0; `.venv\Scripts\python -m pytest -q` — **143 passed, 18 warnings**; `.venv\Scripts\python -m compileall -q app` — **PASS**; `.venv\Scripts\pip check` — **PASS, no broken requirements**. The warning set is the same existing deprecations/runtime warning recorded for T12.4.1.
 - **Scope — CONFIRMED:** changes limited to `backend/app/telegram.py`, `PLAN.md`, `PROGRESS.md`, and this report. No dependencies or deploy files changed.
 - **VERIFY ON VPS:** confirm the deployed Pyrogram client establishes Telegram MTProto over IPv6 and `/health/ready` reports Telegram connected. No live VPS connection test was performed.
+
+## T12.80 — Post-incident docs re-baseline
+
+### 2026-11-20 incident outcome — CONFIRMED from owner evidence
+
+- The VPS origin was repointed to GitHub.
+- Live SHA: `c0aa30f28408add60574de9f9385912131b5524a`, tag `deploy-T12.7`.
+- Silent-bot fix: bot module import is unconditional in lifespan.
+- WARP SOCKS5 `127.0.0.1:40000` is present for GitHub IPv4 egress.
+- Stale bundle: `/opt/hearth/hearth-v1.0-rc.bundle` remains at `7629f0a`.
+- VPS disk: 75% (3.0 GB / 4.0 GB).
+- VPS RAM: 210 MB / 512 MB.
+- Incident items A1/A2/A4/A5/A6/A7 are tracked by T12.89 and T12.91; resolution remains pending live VPS evidence.
+
+### Re-opened F-01/F-02 — CONFIRMED from source evidence
+
+- F-01: `create_stream_token()` emits no family `ver`; `/playback/start` passes `uid=User.id` while `_auth_stream` queries `User.telegram_id`.
+- F-02: `check_auth()` uses static `AUTH_USERS`; `verify-code` mints `role=admin` for existing users without a `family_members` membership check.
+- Owner authorization dated 2026-11-20 supersedes the prior do-not-refix instruction for F-01/F-02 only.
+
+### Owner-authorized mobile MediaPlayer exceptions
+
+- T12.86 — mobile-only auto-landscape is authorized.
+- T12.87 — mobile-only tap-for-controls and center-button play/pause are authorized.
+- T12.88 — both exceptions freeze after implementation; TV/PC behavior remains byte-identical in behavior, all exports remain present, and `hearth_player_prefs` / `hearth_device_id` (`DEVICE_ID_KEY`) remain unchanged.
+
+### Task and gate evidence
+
+T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T0-R, T15-R, and T16-R gate reruns after the final freeze.
+
+- Branch: `hearth/t12.80` cut from latest `main`.
+- Scope: only `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md` may change.
+- MediaPlayer: no application diff expected; verify before commit.
+- VERIFY ON VPS: live origin HEAD, service liveness, WARP routing, stale-bundle cleanup, disk/RAM measurements, and F-01/F-02 runtime behavior.
+
+### Fresh T12.80 gate evidence — CONFIRMED
+
+- Date: 2026-11-20
+- Branch: `hearth/t12.80`
+- Python: local development `.venv` — project Python 3.13 gate
+- Node: **v20.19.5**, npm **10.8.2** — fresh frontend rerun
+- Backend `.venv\Scripts\python -m pytest -q`: **149 passed, 18 warnings**
+- Backend `.venv\Scripts\python -m compileall -q app`: **PASS**
+- Backend `.venv\Scripts\pip check`: **PASS; no broken requirements**
+- Frontend `npm ci`: **PASS**; npm reported 24 dependency-tree vulnerabilities (1 low, 6 moderate, 15 high, 2 critical). No dependency upgrade or force-fix was performed.
+- Frontend `npm run lint`: **PASS**
+- Frontend `npm run typecheck`: **PASS**
+- Frontend `npm test`: **2 files, 14 tests passed**
+- Frontend `npm run build`: **PASS**
+- `dist/_redirects`: **CONFIRMED present**
+- MediaPlayer freeze: `git diff --stat -- web/src/components/MediaPlayer.tsx`: **empty**
+- Scope: `git diff --stat` changed only `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`; no app/code/dependency/deploy file changed.
+- Existing 149-test baseline and all existing security tests remained present; no security test was weakened or deleted.
