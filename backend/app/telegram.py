@@ -35,6 +35,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +61,8 @@ __all__ = [
     "stop_all_clients",
     "is_client_healthy",
     "mark_client_unhealthy",
+    "record_auth_key_failure",
+    "note_auth_key_success",
     "get_telegram_health_failure",
     "forward_to_storage_channel",
     "delete_from_storage_channel",
@@ -144,6 +148,9 @@ clients: list[Client] = [tg_client] + _helper_clients
 telegram_auth_key_unhealthy = False
 telegram_auth_key_failure_reason: str | None = None
 _unhealthy_clients: dict[int, str] = {}
+_auth_key_failure_timestamps: dict[int, deque[float]] = {}
+_AUTH_KEY_FAILURE_WINDOW_SECONDS = 60.0
+_AUTH_KEY_FAILURE_THRESHOLD = 3
 _AUTH_KEY_RECOVERY = {
     AuthKeyUnregistered: (
         "Preserve and back up the session directory, then re-authorize this "
@@ -192,6 +199,35 @@ def mark_client_unhealthy(client: Any, error: BaseException) -> None:
         error_type.__name__,
         recovery,
     )
+
+
+def record_auth_key_failure(client: Any, error: BaseException) -> bool:
+    if not any(isinstance(error, error_type) for error_type in _AUTH_KEY_RECOVERY):
+        return False
+
+    failures = _auth_key_failure_timestamps.setdefault(id(client), deque())
+    now = time.monotonic()
+    cutoff = now - _AUTH_KEY_FAILURE_WINDOW_SECONDS
+    while failures and failures[0] < cutoff:
+        failures.popleft()
+    failures.append(now)
+
+    if len(failures) >= _AUTH_KEY_FAILURE_THRESHOLD:
+        mark_client_unhealthy(client, error)
+        return True
+
+    logger.warning(
+        "Telegram client %s transient auth-key failure %d/%d (%s)",
+        getattr(client, "pool_index", "unknown"),
+        len(failures),
+        _AUTH_KEY_FAILURE_THRESHOLD,
+        type(error).__name__,
+    )
+    return False
+
+
+def note_auth_key_success(client: Any) -> None:
+    _auth_key_failure_timestamps.pop(id(client), None)
 
 
 def get_telegram_health_failure() -> str | None:

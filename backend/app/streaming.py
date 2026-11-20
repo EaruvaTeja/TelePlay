@@ -50,7 +50,8 @@ from .telegram import (
     clients,
     get_telegram_health_failure,
     is_client_healthy,
-    mark_client_unhealthy,
+    note_auth_key_success,
+    record_auth_key_failure,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,7 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
             raise
         except Exception as e:
             if isinstance(e, _AUTH_KEY_ERRORS):
-                mark_client_unhealthy(c, e)
+                record_auth_key_failure(c, e)
             logger.error(
                 "Bot %s: cannot fetch message %s (%s)",
                 idx,
@@ -190,6 +191,7 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
                 type(e).__name__,
             )
             return idx, c, None, "error"
+        note_auth_key_success(c)
         if msg is not None and not _media_of(msg):
             return idx, c, msg, "unusable"
         return idx, c, msg, ("ok" if msg is not None else "gone")
@@ -221,11 +223,12 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
 async def _refresh(c_idx: int, client: Any, msg: Any) -> Any:
     try:
         fresh = await _client_message(client, c_idx, msg.chat.id, msg.id, force=True)
+        note_auth_key_success(client)
         return fresh or msg
     except asyncio.CancelledError:
         raise
     except _AUTH_KEY_ERRORS as e:
-        mark_client_unhealthy(client, e)
+        record_auth_key_failure(client, e)
         raise
     except Exception as e:
         logger.warning("Bot %s: file-reference refresh failed: %s", c_idx, e)
@@ -312,7 +315,7 @@ async def stream_file(
                 if isinstance(item, BaseException):
                     last_error = item
                     if isinstance(item, _AUTH_KEY_ERRORS):
-                        mark_client_unhealthy(client, item)
+                        record_auth_key_failure(client, item)
                     break
 
                 chunk = item
@@ -324,6 +327,7 @@ async def stream_file(
                 if chunk:
                     yield chunk
                     delivered += len(chunk)
+                    note_auth_key_success(client)
                 if delivered >= total:
                     break
 

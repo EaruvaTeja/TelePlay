@@ -508,3 +508,20 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **CONFIRMED:** local reliability tests and clean-checkout gates passed. The freeze-candidate source/test snapshot SHA and tree are recorded above and in `PROGRESS.md`. No deployment, VPS operation, or release tag was performed.
 - **VERIFY ON VPS:** unhealthy Telegram client reporting and auth-key recovery workflow; cross-account device-ID conflict returns 409; `/sync confirm` reports `aborted for safety` when the guard trips; replacement banner renders after deployment.
 - **ON HOLD:** T12.91, T0-R, T12.92, T15-R, and T16-R. Owner tags `deploy-T12.90-rc` only after merge.
+
+## T12.90.1 — Finding B: transient auth-key retry preserved
+
+### Finding closure — CONFIRMED by source and regression tests
+
+- T12.2 recorded a transient `AUTH_KEY_UNREGISTERED` during `upload.GetFile` that recovered through stream retry while the main session remained healthy. T12.90's immediate first-failure quarantine could turn that transient condition into a persistent 503.
+- `record_auth_key_failure(client, error)` tracks timestamps per client, prunes entries older than 60 seconds, and calls the existing `mark_client_unhealthy()` only at **3 failures within 60 seconds**. Earlier failures log `transient auth-key failure n/3`. Session files are never deleted automatically; the existing unhealthy reason and operator recovery instructions are unchanged.
+- Successful message lookup, refresh lookup, and chunk delivery clear only that client's failure counter. Healthy-pool filtering, retry/backoff for non-auth errors, auth-error retry, unanimous-gone behavior, and `StreamUnavailable` health reasons remain intact.
+- **CONFIRMED by regressions:** one stream auth-key failure followed by a successful retry leaves the client healthy and clears the counter; successful lookup/refresh clears prior failures; three failures within the window quarantine the client and populate `/health/ready`'s `telegram_reason`; failures spaced 61 seconds apart do not quarantine; success between failures resets the threshold.
+
+### Fresh T12.90.1 gate evidence — CONFIRMED
+
+- Date: **2026-11-20**; branch based on latest `main` SHA `1473d9e9acb15d2da07597fca57516f351505134`. Python **3.13.0**, Node **20.19.5**, npm **10.8.2**.
+- Backend full suite: **226 passed, 61 warnings**; focused `test_t12_90_reliability.py`: **13 passed, 1 warning**; `compileall -q app`: **PASS**; `pip check`: **PASS; no broken requirements**.
+- Frontend: `npm ci`: **PASS**, 447 packages (24 dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); lint and typecheck **PASS**; tests **3 files, 170 passed**; build **PASS**; `dist/_redirects` **present**; `npm audit --omit=dev`: **0 production vulnerabilities**. No dependency changes.
+- `git diff --check`: **PASS**; `MediaPlayer.tsx` diff: **empty**; requirements/package manifests and lockfiles unchanged.
+- **VERIFY ON VPS:** observe a transient auth-key error recover without persistent readiness loss, then validate the operator workflow after three failures in 60 seconds. No live Telegram/VPS recovery test was performed.
