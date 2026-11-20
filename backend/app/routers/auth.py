@@ -122,22 +122,25 @@ async def _get_or_create_guest_user(db: AsyncSession) -> User:
 
 async def _get_or_create_family_user(db: AsyncSession, telegram_id: int) -> User:
     """
-    Family member. The ID came from a bot-minted code, which the bot only issues
-    to family members, so the role must be read from family_members (active =>
-    admin) rather than hardcoded. If the id is not an active family member the
-    code is invalid and the caller must reject it.
+    Resolve family authorization from the live membership row for every login.
+    If the id is not an active family member the code is invalid.
     """
+    member_result = await db.execute(
+        select(FamilyMember).where(FamilyMember.telegram_id == telegram_id)
+    )
+    member = member_result.scalar_one_or_none()
+    if member is None or not member.active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
+
     result = await db.execute(select(User).where(User.telegram_id == telegram_id))
     user = result.scalar_one_or_none()
     if user is None:
-        member = await db.execute(
-            select(FamilyMember).where(FamilyMember.telegram_id == telegram_id)
-        )
-        member = member.scalar_one_or_none()
-        if member is None or not member.active:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
         user = User(telegram_id=telegram_id, role="admin")
         db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    elif user.role != "admin":
+        user.role = "admin"
         await db.commit()
         await db.refresh(user)
     return user
@@ -229,10 +232,6 @@ async def verify_login_code(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
 
     telegram_id = int(row[0])
-    if telegram_id not in settings.auth_users:
-        logger.warning("verify-code: code bound to non-whitelisted id %s", telegram_id)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
-
     user = await _get_or_create_family_user(db, telegram_id)
     version = int(user.auth_version or 0)
 

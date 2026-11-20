@@ -34,6 +34,7 @@ class FakeMessage:
         )
         self.id = 42
         self.command = command or []
+        self.text = f"/{self.command[0]}" if self.command else "upload"
         self.video = (
             SimpleNamespace(
                 file_id="file-id",
@@ -53,12 +54,16 @@ class FakeMessage:
         self.document = None
         self.photo = None
         self.replies = []
+        self.stop_propagated = False
         self.status_message = FakeStatusMessage()
 
     async def reply(self, text, **kwargs):
         self.replies.append((text, kwargs))
         if text == "📥 Processing file...":
             return self.status_message
+
+    def stop_propagation(self):
+        self.stop_propagated = True
 
 
 class FakeCallback:
@@ -119,7 +124,11 @@ def test_upload_user_lookup_db_failure_replies_with_wake_up_button(monkeypatch, 
     async def fail_user_lookup(*args, **kwargs):
         raise _db_error()
 
+    async def fail_membership_lookup(telegram_id):
+        raise _db_error()
+
     forward = AsyncMock()
+    monkeypatch.setattr(bot, "is_active_member", fail_membership_lookup)
     monkeypatch.setattr(bot, "get_or_create_user", fail_user_lookup)
     monkeypatch.setattr(bot, "forward_to_storage_channel", forward)
     message = FakeMessage()
@@ -145,6 +154,7 @@ def test_upload_db_failure_after_forward_compensates_and_adds_status_button(
     forwarded = SimpleNamespace(id=88)
     delete = AsyncMock(return_value=delete_succeeds)
     monkeypatch.setattr(bot, "get_or_create_user", get_user)
+    monkeypatch.setattr(bot, "is_active_member", AsyncMock(return_value=True))
     monkeypatch.setattr(
         bot, "forward_to_storage_channel", AsyncMock(return_value=forwarded)
     )
@@ -172,6 +182,7 @@ def test_upload_forward_failure_does_not_reference_unbound_forwarded(monkeypatch
         raise RuntimeError("forward failed")
 
     monkeypatch.setattr(bot, "get_or_create_user", get_user)
+    monkeypatch.setattr(bot, "is_active_member", AsyncMock(return_value=True))
     monkeypatch.setattr(bot, "forward_to_storage_channel", fail_forward)
     message = FakeMessage()
 
@@ -184,13 +195,41 @@ def test_start_db_failure_uses_wake_up_reply_and_button(monkeypatch):
     async def fail_user_lookup(*args, **kwargs):
         raise InterfaceError("SELECT 1", {}, OSError("database unavailable"))
 
+    async def fail_membership_lookup(telegram_id):
+        raise _db_error()
+
+    monkeypatch.setattr(bot, "is_active_member", fail_membership_lookup)
     monkeypatch.setattr(bot, "get_or_create_user", fail_user_lookup)
     message = FakeMessage(has_video=False, command=["start"])
 
+    asyncio.run(bot.check_auth(None, message))
+    assert message.stop_propagated is False
     asyncio.run(bot.start_command(None, message))
 
     assert message.replies[0][0] == DB_WAKING_MESSAGE
     _assert_status_button(message.replies[0][1]["reply_markup"])
+
+
+def test_database_fallback_does_not_authorize_non_bootstrap_user(monkeypatch):
+    async def fail_membership_lookup(telegram_id):
+        raise _db_error()
+
+    monkeypatch.setattr(bot, "is_active_member", fail_membership_lookup)
+    message = FakeMessage(
+        has_video=False,
+        command=["start"],
+    )
+    message.from_user = SimpleNamespace(
+        id=max(bot.settings.auth_users) + 1,
+        username="outsider",
+        first_name="Outsider",
+        last_name=None,
+    )
+
+    asyncio.run(bot.check_auth(None, message))
+
+    assert message.stop_propagated is True
+    assert message.replies[0][0].startswith("🚫 **Access Restricted**")
 
 
 def test_server_status_authorized_db_up_answers_ready(monkeypatch):

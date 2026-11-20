@@ -13,13 +13,17 @@ import asyncio
 import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from fastapi.testclient import TestClient
 
 import app
 from app import database, models
+from app.database import get_db
+from app.main import app as fastapi_app
 
 
 class FakeLimiter:
@@ -68,13 +72,54 @@ class FakeCallbackMessage:
 
 class FakeMessage:
     def __init__(self, sender_id, text):
-        self.from_user = SimpleNamespace(id=sender_id)
+        self.from_user = SimpleNamespace(
+            id=sender_id,
+            username="family",
+            first_name="Family",
+            last_name=None,
+        )
         self.text = text
         self.command = text.split()
         self.replies = []
+        self.stop_propagated = False
+        self.id = 42
+        self.video = None
+        self.audio = None
+        self.document = None
+        self.photo = None
+        self.status_message = FakeStatusMessage()
 
     async def reply(self, text, **kwargs):
         self.replies.append((text, kwargs))
+        if text == "📥 Processing file...":
+            return self.status_message
+
+    def stop_propagation(self):
+        self.stop_propagated = True
+
+
+class FakeStatusMessage:
+    def __init__(self):
+        self.edits = []
+
+    async def edit(self, text, **kwargs):
+        self.edits.append((text, kwargs))
+
+
+class FakeUploadMessage(FakeMessage):
+    def __init__(self, sender_id):
+        super().__init__(sender_id, "video")
+        self.video = SimpleNamespace(
+            file_id="file-id",
+            file_unique_id="unique-id",
+            file_name="test.mp4",
+            file_size=100,
+            mime_type="video/mp4",
+            duration=1,
+            width=10,
+            height=10,
+            thumbs=[],
+        )
 
 
 @pytest.fixture
@@ -331,12 +376,29 @@ def test_myfiles_pagination(patched_bot):
 def test_get_or_create_user_role_by_family_membership(patched_bot):
     bot, _, _, sess = patched_bot
 
+    async def make_roles_stale():
+        async with sess() as s:
+            active = (
+                await s.execute(
+                    select(models.User).where(models.User.telegram_id == 999000111)
+                )
+            ).scalar_one()
+            inactive = (
+                await s.execute(
+                    select(models.User).where(models.User.telegram_id == 888000222)
+                )
+            ).scalar_one()
+            active.role = "guest"
+            inactive.role = "admin"
+            await s.commit()
+
     async def role_of(telegram_id):
         async with sess() as s:
             res = await s.execute(select(models.User.role).where(models.User.telegram_id == telegram_id))
             return res.scalar_one()
 
     async def go():
+        await make_roles_stale()
         await bot.get_or_create_user(999000111)   # active family, existing admin row
         await bot.get_or_create_user(777000333)   # active family, no user row yet -> admin
         await bot.get_or_create_user(888000222)   # inactive family -> guest
@@ -353,3 +415,155 @@ def test_get_or_create_user_role_by_family_membership(patched_bot):
     assert r_active_new == "admin"
     assert r_inactive == "guest"
     assert r_outsider == "guest"
+
+
+def test_db_member_outside_auth_users_can_start_and_upload(patched_bot, monkeypatch):
+    bot, _, _, sess = patched_bot
+    monkeypatch.setattr(
+        bot,
+        "settings",
+        bot.settings.model_copy(update={"auth_users": [123456789]}),
+    )
+    message = FakeMessage(777000333, "/start")
+
+    asyncio.run(bot.check_auth(None, message))
+    assert message.stop_propagated is False
+    asyncio.run(bot.start_command(None, message))
+    assert any("Welcome to Media Hub" in reply[0] for reply in message.replies)
+
+    uploaded = FakeUploadMessage(777000333)
+    forwarded = SimpleNamespace(id=808)
+    forward = AsyncMock(return_value=forwarded)
+    monkeypatch.setattr(bot, "forward_to_storage_channel", forward)
+    asyncio.run(bot.handle_file(None, uploaded))
+
+    forward.assert_awaited_once_with(uploaded)
+    assert uploaded.status_message.edits[0][0].startswith(
+        "✅ **File saved to shared library!**"
+    )
+
+    async def verify_user_and_file():
+        async with sess() as db:
+            user = (
+                await db.execute(
+                    select(models.User).where(models.User.telegram_id == 777000333)
+                )
+            ).scalar_one()
+            file = (
+                await db.execute(
+                    select(models.File).where(models.File.channel_message_id == 808)
+                )
+            ).scalar_one()
+            return user.role, file.user_id == user.id
+
+    assert asyncio.run(verify_user_and_file()) == ("admin", True)
+
+
+def test_removed_member_cannot_upload_or_mint_bot_login_codes(patched_bot, monkeypatch):
+    bot, _, _, sess = patched_bot
+    forward = AsyncMock()
+    monkeypatch.setattr(bot, "forward_to_storage_channel", forward)
+    before = asyncio.run(_login_code_count(sess))
+
+    start_message = FakeMessage(888000222, "/start")
+    asyncio.run(bot.check_auth(None, start_message))
+    assert start_message.stop_propagated is True
+    assert start_message.replies[0][0].startswith("🚫 **Access Restricted**")
+
+    uploaded = FakeUploadMessage(888000222)
+    asyncio.run(bot.handle_file(None, uploaded))
+    forward.assert_not_awaited()
+    assert uploaded.replies[0][0].startswith("🚫 **Access Restricted**")
+
+    for handler, command in (
+        (bot.login_command, "/login"),
+        (bot.web_command, "/web"),
+    ):
+        message = FakeMessage(888000222, command)
+        asyncio.run(handler(None, message))
+        assert message.replies[0][0].startswith("🚫 **Access Restricted**")
+
+    link_message = FakeMessage(888000222, "/web")
+    assert (
+        asyncio.run(
+            bot.get_web_app_button(
+                888000222, "Open Web", target=link_message
+            )
+        )
+        is None
+    )
+    assert link_message.replies[0][0].startswith("🚫 **Access Restricted**")
+    assert asyncio.run(_login_code_count(sess)) == before
+
+
+async def _login_code_count(sess):
+    async with sess() as db:
+        return len((await db.execute(select(models.LoginCode))).scalars().all())
+
+
+def _seed_login_code(sess, code, telegram_id):
+    async def seed():
+        async with sess() as db:
+            db.add(
+                models.LoginCode(
+                    code=code,
+                    telegram_id=telegram_id,
+                    expires_at=datetime.utcnow() + timedelta(minutes=5),
+                )
+            )
+            await db.commit()
+
+    asyncio.run(seed())
+
+
+def test_verify_code_allows_active_db_member_outside_auth_users(patched_bot, monkeypatch):
+    bot, _, _, sess = patched_bot
+    monkeypatch.setattr(
+        bot,
+        "settings",
+        bot.settings.model_copy(update={"auth_users": [123456789]}),
+    )
+    _seed_login_code(sess, "87654321", 777000333)
+
+    async def override_get_db():
+        async with sess() as db:
+            yield db
+
+    monkeypatch.setitem(fastapi_app.dependency_overrides, get_db, override_get_db)
+    response = TestClient(fastapi_app).post(
+        "/api/auth/verify-code",
+        json={"code": "87654321"},
+        headers={"X-Device-Id": "active-db-member"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["role"] == "admin"
+
+
+def test_verify_code_rejects_removed_member_with_existing_user(patched_bot, monkeypatch):
+    _, _, _, sess = patched_bot
+    _seed_login_code(sess, "87654322", 888000222)
+
+    async def override_get_db():
+        async with sess() as db:
+            yield db
+
+    monkeypatch.setitem(fastapi_app.dependency_overrides, get_db, override_get_db)
+    response = TestClient(fastapi_app).post(
+        "/api/auth/verify-code",
+        json={"code": "87654322"},
+        headers={"X-Device-Id": "removed-db-member"},
+    )
+
+    assert response.status_code == 400
+
+    async def verify_user_role():
+        async with sess() as db:
+            user = (
+                await db.execute(
+                    select(models.User).where(models.User.telegram_id == 888000222)
+                )
+            ).scalar_one()
+            return user.role
+
+    assert asyncio.run(verify_user_role()) == "guest"
