@@ -581,3 +581,34 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **VERIFY ON VPS:** after implementation and owner deployment, verify the household count endpoint and device-limit flow against the deployed server. No VPS or physical-device checks were performed for T13.1.
 - Deleted tests: **none**.
 - Deviations / findings: before this task, `PLAN.md` did not contain T13.1–T13.11, despite the task ritual saying a T13.1 entry already existed; the task specification explicitly required adding all eleven entries, so they were added once. The prior progress state listed T12.91 as the current on-hold task; this owner-provided T13.1 task is the active phase authorization, and the on-hold tasks remain on hold. No future-task code audit was performed because T13.1 is docs-only and explicitly forbids preparing another task; any implementation/spec mismatch must be recorded when the relevant task is executed.
+
+## T13.2 — Remove bottom-bar volume cluster
+
+### Changes — CONFIRMED
+
+- Removed the bottom-bar divider, adjacent Mute button, Volume down/Volume up buttons, and `VolumeBar`.
+- Removed `VolumeBar` and its slider-only pointer handling, the volume-level/step helpers, the now-unused `Minus`/`Plus` imports, `data-hp-vol` recognition, the slider exclusion in `stepLinear`, and the `onVol` keyboard branches.
+- Preserved the top-bar Mute button, `toggleMute`, M-key shortcut, `prefs.volume`/`prefs.muted` state and persistence, `onVolumeChange` synchronization, and localStorage keys. No API, store, backend, dependency, or test file changed.
+- Files changed: `web/src/components/MediaPlayer.tsx`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` was not changed; the task matched its existing card. No tests were deleted.
+
+### Layout and input reasoning — CONFIRMED by source review
+
+- The bottom-bar outer `flex items-center justify-between gap-2` and its separate left/right groups remain. The left group now contains only Play/Pause, Back 10 seconds, and Forward 10 seconds; the right group retains Crop, Settings, PiP when supported, and Fullscreen when supported. Existing responsive gaps and sizing classes are unchanged, so the removed controls no longer consume space on phone, PC, or TV.
+- TV D-pad linear navigation now traverses the visible controls without filtering for the removed slider. All volume-slider-only `data-hp-vol` and `onVol` references are gone, so there is no dead focus stop or removed-element reference. Actual device rendering and remote operation were not tested.
+- The MediaPlayer diff contains only these authorized categories: unused icon imports; slider-specific focus filtering/comment; `VolumeBar` definition; four slider/step helpers; slider-only keyboard cases; and the requested bottom-bar volume cluster. The top-bar Mute and volume engine/synchronization remain unchanged.
+
+### Gates — CONFIRMED
+
+- Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings**.
+- Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 178 tests passed**; `npm run build` — **PASS**; `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- Compared with the T13.1 baseline: backend **226** and frontend **178** tests, unchanged. No tests were removed.
+- `git diff --check` — **PASS**. `git diff --stat -- web/src/components/MediaPlayer.tsx` is limited to the T13.2 changes; the full task diff is limited to the four authorized files.
+
+### Parity and owner verification
+
+- **CONFIRMED by source:** only the explicitly authorized bottom-bar volume cluster changes across devices. The top-bar Mute/M shortcut and other TV/PC controls remain.
+- **VERIFY ON DEVICE:** confirm the phone bottom bar has no volume cluster and the remaining controls lay out correctly.
+- **VERIFY ON TV:** confirm remote focus moves through the remaining bar controls without a dead stop; check the bottom-bar layout and top-bar Mute.
+- **VERIFY ON VPS:** none required for this client-only task; no server-side behavior was changed.
+- Deleted tests: **none**.
+- Deviations / findings: **none**. All requested volume-slider symbols and the existing bottom-bar structure were present; no out-of-scope issue was found.
