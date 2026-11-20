@@ -923,3 +923,36 @@ The existing `handleBack` closes settings first; closes the player if a dialog i
 - **VERIFY ON TV / VERIFY ON DEVICE:** Samsung TV, PC, and tablet behavior was not runtime-tested; no code path for those devices was intentionally changed.
 - **VERIFY ON VPS:** none; no server or API change.
 - **CONFIRMED:** `PROGRESS.md` is checked for T13.8.2, Active Branch is `hearth/t13.8.2`, and Current Task remains T13.10. Exception #5.7.2 is re-frozen in `HANDOFF.md`.
+
+## T13.10 — Home live-devices chip, popup text, and flow verification
+
+### Changes and scope — CONFIRMED
+
+- **CONFIRMED:** Branch `hearth/t13.10` is based on latest `main` at `e24838fd586d4ad6f3a6a1e880f0563eb9c4357e`. Added `LiveDevicesChip` beside `RolePill`; its dot maps 0/1/2/3+ active slots to grey/green/orange/red, desktop text is `N watching`, and phone text is `N/limit` using the server value. It is `role="status"`, polite live, and `tabIndex={-1}`.
+- **CONFIRMED:** Added typed `fetchPlaybackCount`, a query key, and a React Query hook. The hook polls every 15 seconds only while the chip/FileBrowser is mounted, stops polling in a hidden tab, refetches on focus/visibility, and stops polling/focus/reconnect fetches when 404/405 marks the feature unavailable. The chip then renders nothing on the old server. Other errors are not converted to unavailable; React Query retains the last successful data.
+- **CONFIRMED:** Added six pure color/text mapping cases, a successful API fetch case, 404/405-unavailable cases, and a case confirming other API errors are rethrown for React Query. The API test file increased from 7 to 17 tests; no tests were deleted.
+- **CONFIRMED:** Exception #5.8 changed only the two DeviceLimitDialog copy lines: title to “Maximum watch devices reached” and body to “The maximum number of watch devices is already in use.” Existing guest ask-family/try-again text and dialog controls are unchanged. The full `MediaPlayer.tsx` diff is exactly these two text replacements; no logic, props, hooks, layout, or device-list changes.
+- **CONFIRMED:** Files touched: `web/src/components/LiveDevicesChip.tsx`, `web/src/components/FileBrowser.tsx`, `web/src/lib/api.ts`, `web/src/lib/__tests__/api.test.ts`, `web/src/components/MediaPlayer.tsx`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` and all backend files are unchanged.
+- **CONFIRMED:** No task tests were deleted. No dependencies, CSS, backend, limiter, API/store exports used by MediaPlayer, auth/token/revocation logic, or localStorage keys changed.
+
+### Existing third-device flow — CONFIRMED by source and tests
+
+- **CONFIRMED:** `test_two_devices_ok_third_refused` verifies the limiter accepts two distinct devices and refuses the third. In `POST /api/playback/start`, a false `limiter.start()` result raises HTTP 409 with `code: DEVICE_LIMIT` before token/stream-URL creation; the start route itself does not stream media bytes. Existing tests do not exercise the capacity case through the HTTP router, so this evidence is the limiter test plus the route branch review, not a new route-level integration test.
+- **CONFIRMED:** `MediaPlayer` maps HTTP 409 `DEVICE_LIMIT` to its `limited` phase and passes the active-device list to `DeviceLimitDialog`. The dialog retains the guest-only family-account/try-again copy; admin Stop calls `DELETE /playback/{device_id}`, whose route calls `limiter.kick()`. Existing `test_kick_*` and `test_stop_frees_slot_without_revoking` cover freeing/revocation behavior.
+- **CONFIRMED:** Closing/unmounting a signed player sends the existing best-effort `/playback/stop` request; the stop route calls `limiter.stop()`. Existing `test_stop_frees_slot_without_revoking` covers normal release, and the 75-second TTL expiry is covered by `test_heartbeat_refreshes_and_ttl_expiry_frees_slot` plus the count-expiry test.
+- **CONFIRMED:** The counter measures limiter slot-holders, not only actively visible video. A playable card's hover/focus invokes `prewarmPlayback`; after its 220 ms delay it calls `/playback/start`, which can acquire a slot. The existing 75-second TTL releases a silent/prewarmed or paused session; heartbeat is sent only while playing. Limiter behavior was not changed.
+
+### Gate evidence — CONFIRMED
+
+- **CONFIRMED:** Python 3.13.0; `python -m compileall -q app` — PASS; `pip check` — PASS, no broken requirements; full `pytest -q` — **230 passed, 61 warnings** (T13.1 baseline: 226; no backend tests changed).
+- **CONFIRMED:** Node 20.20.2 / npm 10.8.2; `npm ci` — PASS (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — PASS, 0 warnings; `npm run typecheck` — PASS; `vitest run` — **3 files, 88 tests passed**; `npm run build` — PASS (**1,530 modules**); `dist/_redirects` — present; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** Frontend had **78 tests before** and **88 after** this task; no tests were removed. The T13.1 baseline was 178; the lower pre-task count is the previously documented T13.4 deletion of 147 tests for removed orientation behavior and addition of four replacement fallback tests. This task adds ten tests and does not further reduce the baseline.
+- **CONFIRMED:** `git diff --check` — PASS. No real device, TV, or VPS gate was run.
+
+### Parity, verification, and deviations
+
+- **CONFIRMED by source/diff:** The new chip is a non-interactive span excluded from tab focus; no TV/PC control or playback path changed. `MediaPlayer.tsx` contains only the authorized #5.8 text hunk. The new server value is read from the API; no device limit is hard-coded into chip text.
+- **VERIFY ON DEVICE:** On a phone, verify old-server 404/405 hides the chip, new-server text is `N/limit`, count 1 is green and count 2 orange; with two devices playing, a third attempt shows the limit dialog.
+- **VERIFY ON TV:** Verify desktop “N watching” text/colors and that remote focus order is unchanged; exercise the third-device dialog and admin Stop with the TV client.
+- **VERIFY ON VPS:** Verify guest/family `GET /api/playback/count` returns only `{active, limit}` after deployment; before deployment, verify the old server's 404/405 leaves the chip hidden without UI/console errors. No VPS request was made.
+- **CONFIRMED:** Deviations: none. Tests deleted: none. No PR was created and no tag was pushed.

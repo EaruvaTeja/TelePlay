@@ -13,7 +13,7 @@
  *   · fetchMe()/useMe() fail closed: any failure → null user, role "unknown".
  *   · 429 → { error: "RATE_LIMITED", retry_after_seconds } (server value).
  *   · 409 on playback/start → { error: "DEVICE_LIMIT", message, active }.
- *   · GET /playback/count → { active, limit } (household-wide numbers only).
+ *   · GET /playback/count → { active, limit } (404/405 means unavailable on an old server).
  *   · Stream URLs carry a signed per-file/per-device token; login JWTs never do.
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -153,6 +153,11 @@ export interface ActiveDevice {
   is_self?: boolean;
   started_at?: string;
   last_seen?: string;
+}
+
+export interface PlaybackCount {
+  active: number;
+  limit: number;
 }
 
 export interface PlaybackStartSuccess {
@@ -445,6 +450,7 @@ export const qk = {
   me: () => ["me"] as const,
   botInfo: () => ["bot/info"] as const,
   activeDevices: () => ["playback", "active"] as const,
+  playbackCount: () => ["playback", "count"] as const,
 };
 
 export const queryClient = new QueryClient({
@@ -703,6 +709,21 @@ export function stopPlaybackBeacon(deviceId: string = getDeviceId()): void {
 export async function fetchActiveDevices(): Promise<ActiveDevice[]> {
   const { data } = await api.get("/playback/active");
   return normaliseDevices(data);
+}
+
+export async function fetchPlaybackCount(): Promise<PlaybackCount | null> {
+  try {
+    const { data } = await api.get<PlaybackCount>("/playback/count");
+    return data;
+  } catch (error) {
+    if (
+      axios.isAxiosError(error) &&
+      (error.response?.status === 404 || error.response?.status === 405)
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function kickDevice(deviceId: string): Promise<void> {
@@ -967,6 +988,20 @@ export function useActiveDevices(
     enabled,
     refetchInterval: enabled ? intervalMs : false,
     staleTime: 5_000,
+    retry: false,
+  });
+}
+
+export function usePlaybackCount(): UseQueryResult<PlaybackCount | null> {
+  return useQuery({
+    queryKey: qk.playbackCount(),
+    queryFn: fetchPlaybackCount,
+    refetchInterval: (query) =>
+      query.state.data === null ? false : 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: (query) => query.state.data !== null,
+    refetchOnReconnect: (query) => query.state.data !== null,
+    staleTime: 0,
     retry: false,
   });
 }

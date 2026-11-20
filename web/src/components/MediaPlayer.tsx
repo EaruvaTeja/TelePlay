@@ -1101,8 +1101,8 @@ function DeviceLimitDialog({ dialogRef, active, role, busy, onKick, onRetry, onC
                     <Users className="h-6 w-6 text-[#38bdf8]" />
                 </span>
                 <div>
-                    <h2 className="text-lg font-bold text-[#e8f1ef]">Two devices are already playing</h2>
-                    <p className="text-sm text-[#9db6b1]">Hearth allows 2 screens at once.</p>
+                    <h2 className="text-lg font-bold text-[#e8f1ef]">Maximum watch devices reached</h2>
+                    <p className="text-sm text-[#9db6b1]">The maximum number of watch devices is already in use.</p>
                 </div>
             </div>
             <ul className="mb-5 space-y-2">

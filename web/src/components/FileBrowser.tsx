@@ -38,6 +38,7 @@ import {
 } from "../lib/api";
 import { useAppStore, useRole } from "../lib/store";
 import { prewarmPlayback } from "./MediaPlayer";
+import LiveDevicesChip from "./LiveDevicesChip";
 import Toasts from "./Toasts";
 
 /* ═══════════════════════════ Types & constants ═══════════════════════════ */
@@ -1018,6 +1019,7 @@ export default function FileBrowser() {
             <span className="block text-xl font-black tracking-tight text-white min-[1600px]:text-3xl">
               Hearth
             </span>
+            <LiveDevicesChip />
             <RolePill role={role} />
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
