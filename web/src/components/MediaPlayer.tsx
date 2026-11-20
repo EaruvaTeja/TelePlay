@@ -48,7 +48,7 @@ import type {
     TouchEvent as ReactTouchEvent,
 } from 'react';
 import {
-    ArrowLeft, AlertTriangle, Check, ChevronDown, ChevronUp, Crop, FastForward,
+    ArrowLeft, AlertTriangle, Check, ChevronDown, ChevronRight, ChevronUp, Crop, FastForward,
     Film, Gauge, Info, Layers, Loader2, Maximize, Minimize, Monitor, Music,
     Lock, Minus, Pause, PictureInPicture2, Play, Plus, RectangleHorizontal, Rewind, RotateCcw,
     Settings, Smartphone, Sparkles, StretchHorizontal, Subtitles, Sun, Tablet, Tv, Users,
@@ -59,20 +59,26 @@ import { useAppStore } from '../lib/store';
 import { getDeviceKind } from '../lib/device';
 import {
     isPhonePlayer,
+    LOCK_HOLD_TO_UNLOCK_MS,
     calculateDragValue,
     classifyLockGesture,
     clampBrightness,
     clampVolume,
+    getLockHoldProgress,
+    getLockNotice,
+    getLockedDragProgress,
     getLockedPlaybackAction,
     resolveSurfaceTap,
     selectDragSide,
     shouldAutoUnlockControlLock,
     shouldClaimVerticalDrag,
+    shouldUnlockAfterLockHold,
     shouldUseDeviceVolumeButtons,
     shouldToggleLockedPlayback,
     shouldUseWebkitFullscreenFallback,
     sliderRatio,
     type PlayerDragSide,
+    type LockNoticeAction,
 } from '../lib/mobilePlayer';
 
 /* ═══════════════════════════ Types & constants ═══════════════════════════ */
@@ -1254,7 +1260,11 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const [lockHandleHint, setLockHandleHint] = useState<string | null>(null);
     const [lockHandleOffset, setLockHandleOffset] = useState(0);
     const [lockHandleDragging, setLockHandleDragging] = useState(false);
+    const [lockHandleDragProgress, setLockHandleDragProgress] = useState(0);
+    const [lockHandleThresholdReached, setLockHandleThresholdReached] = useState(false);
+    const [lockHoldProgress, setLockHoldProgress] = useState(0);
     const [lockedNoticeVisible, setLockedNoticeVisible] = useState(false);
+    const [lockedNoticeAction, setLockedNoticeAction] = useState<LockNoticeAction>('locked');
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isWebkitFullscreen, setIsWebkitFullscreen] = useState(false);
@@ -1318,6 +1328,11 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const indicatorFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lockHandleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lockedNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lockHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lockHoldProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+    const lockHoldStartedAtRef = useRef<number | null>(null);
+    const lockHoldPointerIdRef = useRef<number | null>(null);
+    const lockHoldCompletedRef = useRef(false);
     const lockedBackAtRef = useRef<number | null>(null);
     const lockActivationKeyRef = useRef<{ key: string; code: number } | null>(null);
     const suppressSurfaceClickUntilRef = useRef(0);
@@ -1597,6 +1612,47 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         }
     }, []);
 
+    const clearLockHold = useCallback(() => {
+        if (lockHoldTimer.current) {
+            clearTimeout(lockHoldTimer.current);
+            lockHoldTimer.current = null;
+        }
+        if (lockHoldProgressTimer.current) {
+            clearInterval(lockHoldProgressTimer.current);
+            lockHoldProgressTimer.current = null;
+        }
+        lockHoldStartedAtRef.current = null;
+        lockHoldPointerIdRef.current = null;
+        lockHoldCompletedRef.current = false;
+        setLockHoldProgress(0);
+    }, []);
+
+    const startLockHold = useCallback((pointerId: number) => {
+        clearLockHold();
+        const startedAt = Date.now();
+        lockHoldStartedAtRef.current = startedAt;
+        lockHoldPointerIdRef.current = pointerId;
+        lockHoldProgressTimer.current = setInterval(() => {
+            if (lockHoldStartedAtRef.current !== startedAt) return;
+            setLockHoldProgress(getLockHoldProgress(Date.now() - startedAt));
+        }, 30);
+        lockHoldTimer.current = setTimeout(() => {
+            if (lockHoldPointerIdRef.current !== pointerId
+                || lockHandleGestureRef.current?.pointerId !== pointerId
+                || !controlsLockedRef.current) {
+                clearLockHold();
+                return;
+            }
+            lockHoldTimer.current = null;
+            lockHoldCompletedRef.current = true;
+            if (lockHoldProgressTimer.current) {
+                clearInterval(lockHoldProgressTimer.current);
+                lockHoldProgressTimer.current = null;
+            }
+            setLockHoldProgress(1);
+        }, LOCK_HOLD_TO_UNLOCK_MS);
+    }, [clearLockHold]);
+
     const hideLockHandle = useCallback(() => {
         lockHandleTimer.current = null;
         if (!controlsLockedRef.current) return;
@@ -1630,13 +1686,14 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         requestAnimationFrame(() => lockHandleRef.current?.focus({ preventScroll: true }));
     }, [scheduleLockHandleHide]);
 
-    const showLockedNotice = useCallback(() => {
+    const showLockedNotice = useCallback((action: LockNoticeAction = 'locked') => {
         if (lockedNoticeTimer.current) clearTimeout(lockedNoticeTimer.current);
+        setLockedNoticeAction(action);
         setLockedNoticeVisible(true);
         lockedNoticeTimer.current = setTimeout(() => {
             lockedNoticeTimer.current = null;
             setLockedNoticeVisible(false);
-        }, 1000);
+        }, 1800);
     }, []);
 
     const revealControls = useCallback(() => {
@@ -1673,6 +1730,9 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         setLockHandleHint(null);
         setLockHandleOffset(0);
         setLockHandleDragging(false);
+        setLockHandleDragProgress(0);
+        setLockHandleThresholdReached(false);
+        clearLockHold();
         clearLockHandleTimer();
         if (lockedNoticeTimer.current) {
             clearTimeout(lockedNoticeTimer.current);
@@ -1693,7 +1753,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         flashStore.set(null);
         containerRef.current?.focus({ preventScroll: true });
         showLockedNotice();
-    }, [clearLockHandleTimer, flashStore, phonePlayer, showLockedNotice]);
+    }, [clearLockHandleTimer, clearLockHold, flashStore, phonePlayer, showLockedNotice]);
 
     const unlockControls = useCallback(() => {
         if (!controlsLockedRef.current) return;
@@ -1710,11 +1770,15 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         setLockHandleHint(null);
         setLockHandleOffset(0);
         setLockHandleDragging(false);
+        setLockHandleDragProgress(0);
+        setLockHandleThresholdReached(false);
+        clearLockHold();
         setLockedNoticeVisible(false);
+        setLockedNoticeAction('locked');
         containerRef.current?.focus({ preventScroll: true });
         setControlsVisible(true);
         revealControls();
-    }, [clearLockHandleTimer, revealControls]);
+    }, [clearLockHandleTimer, clearLockHold, revealControls]);
 
     useEffect(() => {
         if (playing && !buffering) revealControls();
@@ -2297,7 +2361,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             return;
         }
         lockedBackAtRef.current = now;
-        showLockHandle('Tap the lock to unlock');
+        showLockHandle('Hold lock 1s to unlock');
     }, [closePlayer, showLockHandle]);
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2511,6 +2575,8 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         if (indicatorFadeTimer.current) clearTimeout(indicatorFadeTimer.current);
         if (lockHandleTimer.current) clearTimeout(lockHandleTimer.current);
         if (lockedNoticeTimer.current) clearTimeout(lockedNoticeTimer.current);
+        if (lockHoldTimer.current) clearTimeout(lockHoldTimer.current);
+        if (lockHoldProgressTimer.current) clearInterval(lockHoldProgressTimer.current);
     }, []);
 
     const onVideoPointerDown = (e: ReactPointerEvent<HTMLVideoElement>) => {
@@ -2620,12 +2686,20 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const onLockHandlePointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
         if (!controlsLockedRef.current || !e.isPrimary || e.button !== 0) return;
         clearLockHandleTimer();
+        if (lockedNoticeTimer.current) {
+            clearTimeout(lockedNoticeTimer.current);
+            lockedNoticeTimer.current = null;
+        }
+        setLockedNoticeVisible(false);
         lockHandleGestureRef.current = {
             pointerId: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
         };
         setLockHandleDragging(true);
+        setLockHandleDragProgress(0);
+        setLockHandleThresholdReached(false);
+        startLockHold(e.pointerId);
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older WebViews */ }
     };
 
@@ -2633,23 +2707,43 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         const gesture = lockHandleGestureRef.current;
         if (!gesture || gesture.pointerId !== e.pointerId) return;
         const deltaX = e.clientX - gesture.startX;
+        const deltaY = e.clientY - gesture.startY;
+        const classification = classifyLockGesture(deltaX, deltaY);
+        if (classification !== 'tap' && lockHoldStartedAtRef.current !== null) clearLockHold();
         setLockHandleOffset(Math.max(0, Math.min(56, deltaX)));
+        setLockHandleDragProgress(
+            classification === 'drag' ? getLockedDragProgress(deltaX) : 0,
+        );
+        setLockHandleThresholdReached(
+            classification === 'drag' && shouldToggleLockedPlayback(deltaX),
+        );
         e.preventDefault();
     };
 
     const onLockHandlePointerUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
         const gesture = lockHandleGestureRef.current;
         if (!gesture || gesture.pointerId !== e.pointerId) return;
-        lockHandleGestureRef.current = null;
-        setLockHandleDragging(false);
-        setLockHandleOffset(0);
-        e.preventDefault();
-
+        const startedAt = lockHoldStartedAtRef.current;
+        const holdCompleted = lockHoldCompletedRef.current
+            || (startedAt !== null && shouldUnlockAfterLockHold(Date.now() - startedAt));
         const deltaX = e.clientX - gesture.startX;
         const deltaY = e.clientY - gesture.startY;
         const classification = classifyLockGesture(deltaX, deltaY);
-        if (classification === 'tap') {
+        lockHandleGestureRef.current = null;
+        setLockHandleDragging(false);
+        setLockHandleOffset(0);
+        setLockHandleDragProgress(0);
+        setLockHandleThresholdReached(false);
+        clearLockHold();
+        e.preventDefault();
+
+        if (holdCompleted) {
             unlockControls();
+            return;
+        }
+        if (classification === 'tap') {
+            showLockedNotice();
+            scheduleLockHandleHide();
             return;
         }
         if (classification === 'drag' && shouldToggleLockedPlayback(deltaX)) {
@@ -2658,6 +2752,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                 const action = getLockedPlaybackAction(!video.paused);
                 if (action === 'pause') pauseMedia();
                 else playMedia();
+                showLockedNotice(action === 'pause' ? 'paused' : 'playing');
             }
         }
         scheduleLockHandleHide();
@@ -2669,7 +2764,14 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         lockHandleGestureRef.current = null;
         setLockHandleDragging(false);
         setLockHandleOffset(0);
+        setLockHandleDragProgress(0);
+        setLockHandleThresholdReached(false);
+        clearLockHold();
         scheduleLockHandleHide();
+    };
+
+    const onLockHandleLostPointerCapture = (e: ReactPointerEvent<HTMLButtonElement>) => {
+        onLockHandlePointerCancel(e);
     };
 
     /* ── Root pointer handlers ── */
@@ -2697,6 +2799,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const onVideoSurfaceClick = () => {
         if (controlsLockedRef.current) {
             showLockHandle();
+            showLockedNotice();
             return;
         }
         if (suppressSurfaceClickUntilRef.current > Date.now()) {
@@ -2715,6 +2818,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     /* ── Derived ── */
     const volEff = prefs.muted ? 0 : prefs.volume;
     const VolIcon = prefs.muted || volEff === 0 ? VolumeX : volEff < 0.5 ? Volume1 : Volume2;
+    const lockedNoticeCopy = getLockNotice(lockedNoticeAction);
     const AspectIcon = ASPECT_META[prefs.aspect].icon;
     const preparingStream = phase === 'starting' || (phase === 'ready' && !src);
     const errorMessage = mediaError ?? sessionError;
@@ -2867,44 +2971,97 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                     <GestureIndicator {...gestureIndicator} />
                 )}
                 {controlsLocked && lockedNoticeVisible && !isMinimized && (
-                    <div className="pointer-events-none absolute left-1/2 top-16 z-[140] -translate-x-1/2 rounded-xl border border-white/15 bg-black/55 px-4 py-2 text-sm font-semibold text-white/85 shadow-xl" role="status" aria-live="polite">
-                        Locked
+                    <div className="pointer-events-none absolute left-1/2 top-16 z-[140] -translate-x-1/2 rounded-xl border border-white/15 bg-black/55 px-4 py-2 text-center text-sm font-semibold leading-tight text-white/85 shadow-xl" role="status" aria-live="polite">
+                        <span className="block">{lockedNoticeCopy.title}</span>
+                        <span className="mt-1 block text-xs font-medium text-white/70">{lockedNoticeCopy.subtitle}</span>
                     </div>
                 )}
                 {controlsLocked && lockHandleVisible && !isMinimized && (
                     <div
-                        className={`pointer-events-none absolute left-3 top-1/2 z-50 flex items-center gap-2 ${lockHandleDragging ? 'transition-none' : 'transition-transform duration-150 ease-out'}`}
-                        style={{ transform: `translate(${lockHandleOffset}px, -50%)` }}
+                        className={`pointer-events-none absolute left-3 top-1/2 z-50 flex flex-col items-start gap-1 ${lockHandleDragging ? 'transition-none' : 'transition-transform duration-150 ease-out'}`}
+                        style={{ transform: `translate3d(${lockHandleOffset}px, -50%, 0)` }}
                     >
-                        <button
-                            ref={lockHandleRef}
-                            type="button"
-                            data-hp-lock-handle
-                            aria-label="Unlock controls"
-                            aria-pressed="true"
-                            aria-describedby={lockHandleHint
-                                ? 'hp-lock-playback-description hp-lock-handle-hint'
-                                : 'hp-lock-playback-description'}
-                            onClick={(e) => { if (e.detail === 0) unlockControls(); }}
-                            onPointerDown={onLockHandlePointerDown}
-                            onPointerMove={onLockHandlePointerMove}
-                            onPointerUp={onLockHandlePointerUp}
-                            onPointerCancel={onLockHandlePointerCancel}
-                            className="hp-focus pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85 shadow-lg"
-                            style={{ touchAction: 'none' }}
-                        >
-                            {playing
-                                ? <Lock className="h-4 w-4" aria-hidden="true" />
-                                : <Play className="h-4 w-4" aria-hidden="true" />}
-                            <span id="hp-lock-playback-description" className="sr-only">
-                                {playing ? 'Drag right to pause playback while controls remain locked.' : 'Drag right to resume playback while controls remain locked.'}
-                            </span>
-                        </button>
+                        <span
+                            aria-hidden="true"
+                            className="pointer-events-none absolute left-8 top-1/2 z-0 h-1 w-14 -translate-y-1/2 rounded-full bg-white/10"
+                            style={{
+                                opacity: lockHandleDragging ? 0.25 + lockHandleDragProgress * 0.65 : 0.2,
+                                transform: `translate3d(0, -50%, 0) scaleX(${Math.max(lockHandleDragProgress, 0.12)})`,
+                                transformOrigin: 'left center',
+                            }}
+                        />
+                        <div className="relative z-10 flex items-center gap-2">
+                            <button
+                                ref={lockHandleRef}
+                                type="button"
+                                data-hp-lock-handle
+                                aria-label="Unlock controls"
+                                aria-pressed="true"
+                                aria-describedby={`hp-lock-unlock-hint hp-lock-playback-description hp-lock-drag-hint${lockHandleHint ? ' hp-lock-handle-hint' : ''}`}
+                                onClick={(e) => { if (e.detail === 0) unlockControls(); }}
+                                onPointerDown={onLockHandlePointerDown}
+                                onPointerMove={onLockHandlePointerMove}
+                                onPointerUp={onLockHandlePointerUp}
+                                onPointerCancel={onLockHandlePointerCancel}
+                                onLostPointerCapture={onLockHandleLostPointerCapture}
+                                className={`hp-focus pointer-events-auto relative flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85 shadow-lg transition-opacity duration-100 ${lockHandleThresholdReached ? 'hp-lock-drag-confirm' : ''}`}
+                                style={{
+                                    touchAction: 'none',
+                                    backgroundColor: lockHandleDragging
+                                        ? `rgba(255,255,255,${0.1 + lockHandleDragProgress * 0.16})`
+                                        : undefined,
+                                    borderColor: lockHandleDragging
+                                        ? `rgba(255,255,255,${0.15 + lockHandleDragProgress * 0.3})`
+                                        : undefined,
+                                }}
+                            >
+                                {playing
+                                    ? <Lock className="h-4 w-4" aria-hidden="true" />
+                                    : <Play className="h-4 w-4" aria-hidden="true" />}
+                                <svg
+                                    aria-hidden="true"
+                                    className="pointer-events-none absolute -inset-1 h-12 w-12"
+                                    viewBox="0 0 48 48"
+                                    style={{ opacity: lockHoldProgress > 0 ? 1 : 0, transform: 'rotate(-90deg)' }}
+                                >
+                                    <circle cx="24" cy="24" r="21" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="2" />
+                                    <circle
+                                        cx="24"
+                                        cy="24"
+                                        r="21"
+                                        fill="none"
+                                        stroke="rgba(94,234,212,0.95)"
+                                        strokeWidth="2"
+                                        strokeDasharray="132"
+                                        strokeDashoffset={132 * (1 - lockHoldProgress)}
+                                    />
+                                </svg>
+                            </button>
+                            <ChevronRight
+                                aria-hidden="true"
+                                className={`h-4 w-4 text-white/70 ${lockHandleThresholdReached ? 'hp-lock-drag-confirm' : lockHandleDragging ? 'transition-transform duration-75' : 'hp-lock-arrow-cue'}`}
+                                style={lockHandleDragging && !lockHandleThresholdReached
+                                    ? {
+                                        opacity: 0.45 + lockHandleDragProgress * 0.5,
+                                        transform: `translateX(${lockHandleDragProgress * 5}px)`,
+                                    }
+                                    : undefined}
+                            />
+                        </div>
+                        <span id="hp-lock-drag-hint" className="pointer-events-none ml-1 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[11px] font-medium text-white/60">
+                            Drag right to pause/play
+                        </span>
                         {lockHandleHint && (
-                            <span id="hp-lock-handle-hint" className="pointer-events-none rounded-full border border-white/15 bg-black/55 px-3 py-2 text-xs font-medium text-white/85 shadow-lg">
+                            <span id="hp-lock-handle-hint" className="pointer-events-none ml-1 rounded-full border border-white/15 bg-black/55 px-3 py-2 text-xs font-medium text-white/85 shadow-lg">
                                 {lockHandleHint}
                             </span>
                         )}
+                        <span id="hp-lock-unlock-hint" className="sr-only">
+                            Touch and hold the lock for one second to unlock. Keyboard activation also unlocks controls.
+                        </span>
+                        <span id="hp-lock-playback-description" className="sr-only">
+                            {playing ? 'Drag right to pause playback while controls remain locked.' : 'Drag right to resume playback while controls remain locked.'}
+                        </span>
                     </div>
                 )}
 

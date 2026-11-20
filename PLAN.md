@@ -5,7 +5,7 @@
 Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one branch = one Copilot prompt = ONE final commit = one owner-merged PR.
 
 ## Constraints & Rules (apply to every task)
-* **Frozen:** `web/src/components/MediaPlayer.tsx` is byte-identical except for a currently active, explicit owner-authorized sub-scope. T12.3 SPEEDS, T12.86 auto-landscape, T12.87 tap-controls, and T12.90.2 slider-axis exceptions are closed. T13 Exception #5 is authorized only within the individual T13.2–T13.10 task cards below and re-freezes after each task. Preserve its imports (`TelegramFile`, `formatDuration`, `useUpdateProgress`, `useFile`, `api`, `useAppStore`) and keys `hearth_player_prefs`, `hearth_device_id`. TV/PC behavior remains byte-identical except where #5.1, #5.2, #5.4, #5.6, and #5.8 explicitly permit changes.
+* **Frozen:** `web/src/components/MediaPlayer.tsx` is byte-identical except for a currently active, explicit owner-authorized sub-scope. T12.3 SPEEDS, T12.86 auto-landscape, T12.87 tap-controls, and T12.90.2 slider-axis exceptions are closed. T13 Exception #5 is authorized only within the individual T13.2–T13.10 task cards below and the owner-authorized T13.8.1 follow-up; it re-freezes after each task. Preserve its imports (`TelegramFile`, `formatDuration`, `useUpdateProgress`, `useFile`, `api`, `useAppStore`) and keys `hearth_player_prefs`, `hearth_device_id`. TV/PC behavior remains byte-identical except where #5.1, #5.2, #5.4, #5.6, and #5.8 explicitly permit changes.
 * **Non-goals:** Android, folders, search, multi-select, rename/move, QR, public links, transcoding, Redis, Docker, SQLite, helper bots, Alembic (today), broad dependency upgrades.
 * **Sanitizer notice:** filename sanitizer and `escape_like` are CORRECT — never alter or "repair".
 * One Uvicorn worker; Python 3.13 (Debian 13 native; decision in HANDOFF); Node 20; `npm ci`; pinned `requirements.txt`.
@@ -413,7 +413,7 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T13 phase — owner-authorized UX and household count tasks
 
-The bare **T13 Deployment Kit & Runbooks** task is already complete. This phase consists of T13.1–T13.11 sub-tasks. Cloudflare Pages publishes on merge to `main`, while the VPS remains on `deploy-T12.90.2-rc` until the owner deploys; every web change must remain compatible with the old server. The owner intends to merge T13.2–T13.8 in one sitting because the temporary removal of the bottom-bar volume controls precedes their replacements. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
+The bare **T13 Deployment Kit & Runbooks** task is already complete. This phase consists of T13.1–T13.11 sub-tasks plus the owner-authorized T13.8.1 follow-up. Cloudflare Pages publishes on merge to `main`, while the VPS remains on `deploy-T12.90.2-rc` until the owner deploys; every web change must remain compatible with the old server. The owner intends to merge T13.2–T13.8 in one sitting because the temporary removal of the bottom-bar volume controls precedes their replacements. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
 
 **T13 guardrails:** no new dependencies or `backdrop-filter`; preserve Chrome 53/old-Tizen compatibility and the existing old-server contract. Do not change the playback limiter, auth-before-cache/stream-token/revocation logic, bot, database schema, deployment kit, protected API/store exports, or `hearth_player_prefs`/`hearth_device_id` keys. `MediaPlayer.tsx` may change only inside the active task's Exception #5 sub-scope. Do not push to main, create a tag, or create/merge a PR.
 
@@ -538,6 +538,16 @@ Use pointer capture and `touch-action: none` on the handle; ignore non-primary p
 **Acceptance checklist:** record each as CONFIRMED by tests/reasoning or VERIFY ON DEVICE: lock visible in portrait/landscape without indicator overlap; lock hides controls while video plays; screen tap shows only handle and playing handle hides in 3s; right drag pauses then resumes while locked; handle tap unlocks; brightness/volume drags disabled while locked; dialogs/errors unlock and remain usable; reopen starts unlocked; TV/PC unchanged. Physical behavior is **VERIFY ON DEVICE**. All gates green.
 
 **Commit:** `T13.8: Mobile control lock with drag-to-pause/play (owner-authorized exception #5.7) — gate passed`
+
+### T13.8.1 — OWNER-AUTHORIZED lock UX polish
+
+**Sub-scope:** Exception #5.7.1, limited to phone lock UX. **Files:** `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, `web/src/index.css` (new `hp-lock-*` animation rules only), `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. Leave the regular Current Task pointer unchanged.
+
+**Implementation:** Require a one-second touch/mouse hold on the locked handle to unlock; show a progress ring and keep a short press locked while displaying “Locked” / “Hold lock 1s to unlock.” Retain the established keyboard activation path. When the handle is visible, show a subtle right arrow and low-opacity “Drag right to pause/play” hint beneath it. During a right drag, move the handle up to 56px, increase track/handle feedback with drag progress, pulse at the 32px toggle threshold, and announce “Paused” or “Playing” while remaining locked. Reset hold/drag state and timers on release, cancel, lost pointer capture, unlock, and unmount. Use only `transform`/`opacity` animations in new `hp-lock-*` CSS, with no backdrop filter or new dependencies. Keep all non-lock behavior and TV/PC/tablet behavior unchanged; do not touch storage, playback/session logic, or API/store exports.
+
+**Tests and gate:** Extend the pure `mobilePlayer.test.ts` cases for one-second hold progress/threshold, right-drag progress, and lock/action notice copy. Run the full web test suite, TypeScript check, lint, production build, and confirm `dist/_redirects`. Physical phone touch and visual acceptance remain **VERIFY ON DEVICE**.
+
+**Commit:** `T13.8.1: Phone lock UX polish — hold-to-unlock and drag feedback — gate passed`
 
 ### T13.9 — Issue 6a: household playback count endpoint
 

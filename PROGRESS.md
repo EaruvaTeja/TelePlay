@@ -4,7 +4,7 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t13.9`
+* **Active Branch:** `hearth/t13.8.1`
 * **Current Task:** `T13.10` — Issue 6b: home live-devices chip, popup text, and flow verification
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
@@ -53,6 +53,7 @@
 * [x] **T13.6** — Issue 4: phone brightness/volume drag gestures and indicator
 * [x] **T13.7** — Issue 5: TV/PC/tablet side controls and D-pad navigation
 * [x] **T13.8** — Issue 8: phone control lock with drag-to-pause/play
+* [x] **T13.8.1** — OWNER-AUTHORIZED Exception #5.7.1: phone lock UX polish
 * [x] **T13.9** — Issue 6a: household playback count endpoint
 * [ ] **T13.10** — Issue 6b: home live-devices chip, popup text, and flow verification
 * [ ] **T13.11** — Final freeze gates, RC candidate, and deploy handoff (docs only)
@@ -68,7 +69,7 @@ The bare **T13 Deployment Kit** is already complete; this phase is the T13.x seq
 
 | Workstream | Dependency / order |
 |---|---|
-| Player controls | T13.2 → T13.4 → T13.6 → T13.7 → T13.8 |
+| Player controls | T13.2 → T13.4 → T13.6 → T13.7 → T13.8 → T13.8.1 |
 | Playback count | T13.9 → T13.10 |
 | Independent player changes | T13.3 and T13.5 are independent of the player-controls chain |
 | Phase closeout | T13.11 follows completion of T13.2–T13.10 |
@@ -169,6 +170,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * `2026-11-20 | T13.7 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2 lint 0 warnings/typecheck; 44 frontend tests; build (1,529 modules) and dist/_redirects; production audit 0`
 * `2026-11-20 | T13.8 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 61 frontend tests; build (1,529 modules) and dist/_redirects; production audit 0`
 * `2026-11-20 | T13.9 | gate passed: pytest 230 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 61 frontend tests; build (1,529 modules) and dist/_redirects; production audit 0`
+* `2026-11-20 | T13.8.1 | gate passed: Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 78 frontend tests; build (1,529 modules) and dist/_redirects; no backend changes; Current Task remains T13.10`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 
