@@ -2344,9 +2344,9 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                         </button>
                         <button
                             type="button" aria-label="Play" onClick={togglePlay}
-                            className="hp-focus flex h-20 w-20 items-center justify-center rounded-full bg-[#2dd4bf] text-[#04110f] transition-[background-color,transform] duration-150 hover:scale-105 hover:bg-[#5eead4] active:scale-95"
+                            className="hp-focus flex h-20 w-20 items-center justify-center rounded-full border border-[rgba(94,234,212,0.30)] bg-[rgba(153,246,228,0.16)] text-[#d9fdf6] transition-[background-color,transform] duration-150 hover:scale-105 hover:bg-[rgba(153,246,228,0.24)] active:scale-95"
                         >
-                            <Play className="ml-1 h-10 w-10" />
+                            <Play className="ml-1 h-10 w-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]" />
                         </button>
                         <button
                             type="button" aria-label="Forward 10 seconds" onClick={seekFwd10}
@@ -2368,9 +2368,9 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                             </button>
                             <button
                                 type="button" aria-label="Pause" onClick={togglePlay}
-                                className="hp-focus flex h-20 w-20 items-center justify-center rounded-full bg-[#2dd4bf] text-[#04110f] transition-[background-color,transform] duration-150 hover:scale-105 hover:bg-[#5eead4] active:scale-95"
+                                className="hp-focus flex h-20 w-20 items-center justify-center rounded-full border border-[rgba(94,234,212,0.30)] bg-[rgba(153,246,228,0.16)] text-[#d9fdf6] transition-[background-color,transform] duration-150 hover:scale-105 hover:bg-[rgba(153,246,228,0.24)] active:scale-95"
                             >
-                                <Pause className="h-10 w-10" />
+                                <Pause className="h-10 w-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]" />
                             </button>
                             <button
                                 type="button" aria-label="Forward 10 seconds" onClick={seekFwd10}
