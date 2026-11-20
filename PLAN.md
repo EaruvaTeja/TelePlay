@@ -5,7 +5,7 @@
 Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one branch = one Copilot prompt = ONE final commit = one owner-merged PR.
 
 ## Constraints & Rules (apply to every task)
-* **Frozen:** `web/src/components/MediaPlayer.tsx` byte-identical for T12.4 onward; the one-time T12.3 owner-authorized SPEEDS exception is closed. Two additional owner-authorized mobile-only exceptions are T12.86 (auto-landscape) and T12.87 (tap=controls, center=play/pause); each freezes independently after implementation, and TV/PC behavior remains byte-identical in behavior. Preserve its imports (`TelegramFile`, `formatDuration`, `useUpdateProgress`, `useFile`, `api`, `useAppStore`) and keys `hearth_player_prefs`, `hearth_device_id`.
+* **Frozen:** `web/src/components/MediaPlayer.tsx` is byte-identical except for a currently active, explicit owner-authorized sub-scope. T12.3 SPEEDS, T12.86 auto-landscape, T12.87 tap-controls, and T12.90.2 slider-axis exceptions are closed. T13 Exception #5 is authorized only within the individual T13.2–T13.10 task cards below and re-freezes after each task. Preserve its imports (`TelegramFile`, `formatDuration`, `useUpdateProgress`, `useFile`, `api`, `useAppStore`) and keys `hearth_player_prefs`, `hearth_device_id`. TV/PC behavior remains byte-identical except where #5.1, #5.2, #5.4, #5.6, and #5.8 explicitly permit changes.
 * **Non-goals:** Android, folders, search, multi-select, rename/move, QR, public links, transcoding, Redis, Docker, SQLite, helper bots, Alembic (today), broad dependency upgrades.
 * **Sanitizer notice:** filename sanitizer and `escape_like` are CORRECT — never alter or "repair".
 * One Uvicorn worker; Python 3.13 (Debian 13 native; decision in HANDOFF); Node 20; `npm ci`; pinned `requirements.txt`.
@@ -410,6 +410,188 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 **Manual checklist — VERIFY ON DEVICE:** iPhone portrait fallback progress drag seeks along the visual bar; volume drag follows the visual bar; Portrait view control and physical rotation exit cleanly; Android native orientation lock is unaffected.
 
 **Commit:** `T12.90.2: Pseudo-landscape slider axis fix (owner-authorized exception #4) + final freeze gates — gate passed`
+
+## T13 phase — owner-authorized UX and household count tasks
+
+The bare **T13 Deployment Kit & Runbooks** task is already complete. This phase consists of T13.1–T13.11 sub-tasks. Cloudflare Pages publishes on merge to `main`, while the VPS remains on `deploy-T12.90.2-rc` until the owner deploys; every web change must remain compatible with the old server. The owner intends to merge T13.2–T13.8 in one sitting because the temporary removal of the bottom-bar volume controls precedes their replacements. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
+
+**T13 guardrails:** no new dependencies or `backdrop-filter`; preserve Chrome 53/old-Tizen compatibility and the existing old-server contract. Do not change the playback limiter, auth-before-cache/stream-token/revocation logic, bot, database schema, deployment kit, protected API/store exports, or `hearth_player_prefs`/`hearth_device_id` keys. `MediaPlayer.tsx` may change only inside the active task's Exception #5 sub-scope. Do not push to main, create a tag, or create/merge a PR.
+
+### T13.1 — Phase authorization and docs re-baseline (docs only)
+
+**Scope:** Record the owner authorization dated 2026-11-20 as Exception #5 to the `MediaPlayer.tsx` freeze. The exception is divided into task-specific sub-scopes and re-frozen after each matching task. This task changes documentation only; zero code diff.
+
+**Files (only):** `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, `AUDIT_REPORT.md`.
+
+**Implementation:** In `HANDOFF.md`, record #5.1 T13.2 bottom-bar volume removal; #5.2 T13.3 4s→3s hide timeout; #5.3 T13.4 phone-only portrait-first/compact controls/auto-landscape removal/iOS fullscreen fallback; #5.4 T13.5 class-only glass center button; #5.5 T13.6 phone brightness/volume drag gestures and indicator; #5.6 T13.7 TV/PC/tablet side buttons and additive D-pad navigation; #5.7 T13.8 phone lock and drag-to-pause/play; #5.8 T13.10 DeviceLimitDialog title/body text only. State that TV/PC behavior may change only for #5.1, #5.2, #5.4, #5.6, and #5.8, and everything else remains byte-identical.
+
+Add T13.1–T13.11 to `PLAN.md` using the task cards below, without widening scope. In `PROGRESS.md`, add the checklist, dependency map, current task, and one no-SHA log line; tick T13.1 only after its gates pass. Keep T12.91, T12.92, T0, T15, and T16 on hold. Append the actual clean-main baseline gate measurements and standing notes to `AUDIT_REPORT.md`: stale deploy split/old-server compatibility; temporary volume-control gap and owner merge plan; slot-holder/75-second counter semantics; stale `docs/RELEASING.md` and unchecked T12.2–T12.5 history reserved for T13.11 with owner approval.
+
+**Gate:** On clean latest `main`, run the full backend gates (Python 3.13 `compileall -q app`, `pip check`, full `pytest`) and frontend gates (Node 20 `npm ci`, lint with zero warnings, typecheck, `vitest run`, build, `dist/_redirects`, `npm audit --omit=dev`). Record actual counts and the built JS bundle size. Counts must not drop from the measured baseline. Confirm `git diff --stat` lists only the four docs and the `MediaPlayer.tsx` task diff is empty.
+
+**Commit:** `T13.1: T13 phase authorization & plan re-baseline (owner exception #5) — docs only`
+
+### T13.2 — Issue 1: remove bottom-bar volume cluster (all devices)
+
+**Sub-scope:** Exception #5.1. **Files:** `web/src/components/MediaPlayer.tsx`, `AUDIT_REPORT.md`, `PROGRESS.md`, `HANDOFF.md`.
+
+**Scope:** On every device remove only the volume controls beside the bottom-bar ±10-second buttons. The owner will redesign volume later in T13.6/T13.7.
+
+**Implementation:** Remove the bottom-bar divider span, adjacent Mute button, “Volume down” IconBtn, `VolumeBar`, and “Volume up” IconBtn. Remove the `VolumeBar` component definition and code used only by it; `data-hp-vol` handling and `onVol` D-pad branches used only for the slider; helpers `volDown`, `volUp`, `stepVolume`, `setVolumeLevel`; and now-unused Minus/Plus icon imports. Keep the top-bar Mute button, M key, `prefs.volume`/`prefs.muted` engine and persistence, `onVolumeChange` sync, `toggleMute`, and all `hearth_player_prefs` keys. Remove no unrelated code.
+
+**Check:** Reason through TV D-pad focus order so it has no dead stop or removed-element reference; reason through phone/PC/TV bottom-bar layout. Device behavior cannot be run locally. Acceptance: no volume UI beside the ±10-second buttons; top-bar Mute and M key still work; TV/PC behavior otherwise byte-identical; all gates green.
+
+**Gate:** Full backend and frontend gates; zero lint warnings; `MediaPlayer.tsx` diff limited to this authorization and required removal of newly unused items; task audit/progress docs updated.
+
+**Commit:** `T13.2: Remove bottom-bar volume cluster (owner-authorized exception #5.1) — gate passed`
+
+### T13.3 — Issue 7: controls auto-hide 4s to 3s (all devices)
+
+**Sub-scope:** Exception #5.2. **Files:** `web/src/components/MediaPlayer.tsx` and task documentation.
+
+**Scope:** Controls on all devices auto-hide after 3 seconds of inactivity instead of 4.
+
+**Implementation:** Change `HIDE_AFTER_MS` from 4000 to 3000; update “4s” wording in the file-header comment and the section comment above `hideControlsNow`; update any docs that state four seconds. Grep all of `web/src`, tests, and docs for any other assumption of a four-second controls timeout; record what was checked in `AUDIT_REPORT.md`, and change only text about this auto-hide.
+
+Do not change any auto-hide guards: no hide while paused, buffering, settings open, a dialog open, or scrubbing. Every key press/touch must continue to re-arm the timer via `revealControls`. Do not change another timing constant.
+
+**Acceptance:** playing video hides controls after 3 seconds on phone, PC, and TV; settings and scrubbing continue to block hiding. **VERIFY ON TV:** determine whether 3 seconds feels workable with D-pad navigation; every key press must re-arm the timer.
+
+**Gate:** Full backend and frontend gates; zero lint warnings; search results and only relevant timeout-text changes recorded.
+
+**Commit:** `T13.3: Controls auto-hide 4s → 3s on all devices (owner-authorized exception #5.2) — gate passed`
+
+### T13.4 — Issue 2: phone portrait-first player and compact controls
+
+**Sub-scope:** Exception #5.3. **Files:** `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts`, `web/src/lib/__tests__/mobilePlayer.test.ts`, and task documentation. **Phone only:** TV, PC, and tablet behavior must remain byte-identical.
+
+**Problem and target:** T12.86 currently auto-rotates a phone video to landscape using native orientation lock and a CSS `rotate(90deg)` pseudo-landscape. In portrait, the bottom bar is about 440px wide and pushes Crop, Settings, PiP, and Fullscreen off a 360px screen. iPhone Fullscreen is not rendered when `document.fullscreenEnabled` is false. The target is portrait on open, all seven controls visible/tappable even at 320px (Play/Pause, −10s, +10s, Crop, Settings, PiP, Fullscreen), working Fullscreen, and natural landscape after physical rotation.
+
+**Remove all T12.86 auto-landscape machinery:** `requestLandscapeOnPlay`, `releasePhoneLandscape`, and all call sites (play, surface interaction, close/unmount); refs/state `landscapeAttemptedRef`, `landscapeRequestIdRef`, `rotateHintShownRef`, `pseudoLandscapeEnabled`, `nativeLandscapeUnsupported`, `showRotateHint`; rotate-hint chip and toast; `data-hp-pseudo-landscape` rotate CSS and rotated/pseudo-landscape child props (including `Scrubber`). In `mobilePlayer.ts`, remove `shouldAutoLandscape`, `lockLandscape`, `unlockLandscape`, `computePseudoLandscape`, and tests of those deleted functions. Keep `isPhonePlayer`, `resolveSurfaceTap`, `sliderRatio`, and their tests; ensure `Scrubber` remains unrotated and `sliderRatio` still behaves correctly for that case. Remove orientation listeners/`isPortrait` only if unused after removal.
+
+**Compact phone bar, below `sm` only:** IconBtn `h-10 w-10`, `sm:h-11 sm:w-11`; icons `h-5 w-5`, `sm:h-6 sm:w-6`; tighter gaps; time labels `text-xs min-w-[44px] sm:text-sm`; use `flex-nowrap` and `min-w-0` so groups shrink rather than overflow; retain safe-area padding. Budget at 320px: 3 × 40px left controls plus 4 × 40px right controls is about 290px and must fit. At/above `sm`, preserve existing sizes exactly. Mute remains in the top bar (T13.2 removes bottom-bar Mute).
+
+**iOS Fullscreen fallback, phone only:** if `document.fullscreenEnabled` is false but the video element exposes `webkitEnterFullscreen`, render the Fullscreen icon and use native video fullscreen (`webkitEnterFullscreen`/`webkitExitFullscreen`). Track state with `webkitbeginfullscreen`/`webkitendfullscreen`. Keep TV/PC fullscreen logic byte-identical by guarding fallback behavior with `isPhonePlayer()`.
+
+**Tests and acceptance:** delete only tests for deleted functions and list every removed test in `AUDIT_REPORT.md`; keep and, if useful, extend tests for `isPhonePlayer`, `resolveSurfaceTap`, and `sliderRatio`. Verify all seven controls fit at 320px, natural physical rotation, Android and iPhone Fullscreen (**VERIFY ON DEVICE**), and unchanged TV/PC behavior. All gates green.
+
+**Commit:** `T13.4: Mobile portrait-first player + compact controls (owner-authorized exception #5.3) — gate passed`
+
+### T13.5 — Issue 3: glass center play/pause button (visual only)
+
+**Sub-scope:** Exception #5.4. **Files:** `web/src/components/MediaPlayer.tsx` (class strings and icon classes of the two center play/pause buttons only) and task documentation.
+
+**Target:** Replace the solid teal disc on the large centered Play/Pause button with a glass-like treatment that keeps the video visible. Do not use `backdrop-filter`; glass is translucent rgba fill plus thin border.
+
+**Design:** background `rgba(153,246,228,0.16)`, hover `rgba(153,246,228,0.24)`, border `1px solid rgba(94,234,212,0.30)`, icon `#d9fdf6` with `drop-shadow(0 1px 2px rgba(0,0,0,0.55))` on the lucide Play/Pause SVG and its polygon/paths via `currentColor`. Preserve `h-20 w-20`, `rounded-full`, visible `hp-focus` ring for TV, `active:scale-95`, `hover:scale-105`, transition, and Play icon `ml-1` optical offset. Apply to both the paused cluster and phone playing cluster. Do not touch the mini-player bar button or any other button. Use comma-form rgba values, not space-separated rgb slash syntax; use inline style or an existing CSS class if Tailwind arbitrary values are awkward.
+
+**Acceptance:** no behavior change; button remains readable over dark and bright frames; focus ring intact; gates green.
+
+**Commit:** `T13.5: Glass center play/pause button (owner-authorized exception #5.4) — gate passed`
+
+### T13.6 — Issue 4: phone brightness/volume drag gestures and indicator
+
+**Sub-scope:** Exception #5.5. **Files:** `web/src/components/MediaPlayer.tsx`, `web/src/lib/mobilePlayer.ts` (new pure helpers), `web/src/lib/__tests__/mobilePlayer.test.ts` (extend), and task documentation. **Phone only:** gate with `isPhonePlayer()`; TV/PC/tablet are untouched.
+
+**Behavior:** On the video surface, vertical drag on the left half changes brightness and on the right half changes volume. The indicator appears only during a drag and fades for about 800ms after lift; no persistent slider/icon.
+
+**Engine:** Add an additive `brightness` field to `hearth_player_prefs`, default 1, clamped to 0.1–1; older saved prefs without the field must load. Render a pointer-events-none black overlay at `z-[12]`, above video and below all UI, with opacity `1 - brightness`; do not CSS-filter the video. Reuse `prefs.volume`/`prefs.muted`: drag to 0 mutes and values above 0 unmute; add no storage keys. Probe once whether `video.volume` is writable by setting, reading back, and restoring a value. If not writable (iOS), right-side drag shows “Use device volume buttons” instead of a fake value; top-bar Mute still works.
+
+**Gesture rules:** Active only on phone video surface when media is ready, player not minimized, no dialog is open, and settings are closed. On pointerdown store start x/y/value/side; ignore non-primary pointers. Claim only when `|dy| > 12px` and `|dy| > 1.3 * |dx|`; choose side from pointerdown x relative to stage midpoint. Compute `clamp(startValue + (startY - currentY) / (0.65 * stageHeight))`. Use pointer capture after claim; handle pointercancel. After a claimed drag, suppress the surface tap that would otherwise toggle controls. Never intercept starts on buttons, sliders, Scrubber, top bar, or bottom bar. Preserve horizontal-swipe behavior. Add `touch-action: none` to the surface only if needed. Support portrait and fullscreen.
+
+**Reusable indicator:** small component for T13.7 reuse with props `kind: 'brightness' | 'volume'`, `value` 0–1, `side: 'left' | 'right'`, `visible`, optional `hintText`, `fadeMs`. Vertical glass pill uses solid rgba only (`bg-black/45`, `border-white/15`), Sun or VolumeX/Volume1/Volume2 by level, thin vertical track/fill, and `text-white/85` percent. Low-opacity video-visible styling; vertically centered and horizontally offset `max(64px, 14%)` from its side edge (room for T13.8 lock), never over center play cluster; `pointer-events-none`, `z-[60]`; visible when controls are hidden. Phone fade is 800ms.
+
+**Pure-helper tests:** axis classification/claim rule, delta/value math, brightness/volume clamps (brightness 0.1–1, volume 0–1), side selection, and iOS fallback decision.
+
+**Acceptance:** drags work in portrait/fullscreen, taps still toggle controls, indicator is transient, Scrubber unaffected, TV/PC untouched; device behavior is **VERIFY ON DEVICE**. All gates green.
+
+**Commit:** `T13.6: Mobile brightness/volume drag gestures + indicators (owner-authorized exception #5.5) — gate passed`
+
+### T13.7 — Issue 5: TV/PC/tablet side controls and D-pad navigation
+
+**Sub-scope:** Exception #5.6. **Files:** `web/src/components/MediaPlayer.tsx` and task documentation. Reuse the indicator and brightness/volume helpers from T13.6; do not duplicate them. Apply to TV, computer, and tablet; phones retain gestures and get no buttons.
+
+**UI:** Brightness [+]/[−] stack at left edge and Volume [+]/[−] stack at right edge, vertically centered and about 3.5% inset. Buttons use `h-11 w-11 rounded-full bg-white/10 border border-white/15 text-white/85 hp-focus`, matching the existing ±10-second glass family; no backdrop-filter. Each press steps 0.1. Clamp brightness 0.1–1 and volume 0–1; zero mutes and raising above zero unmutes. Buttons are inside the controls overlay and auto-hide with it after 3s; existing `revealControls` handles key/mouse movement. Each step shows the shared indicator with `fadeMs=1200`. PC clicks work; no mouse-hold requirement; preserve keys/shortcuts.
+
+**Additive D-pad/keyboard navigation only:** At bottom-bar left end, ArrowLeft focuses brightness cluster; at right end, ArrowRight focuses volume cluster. Within a cluster ArrowUp/ArrowDown move between + and −; OK/Enter activates; held OK repeats via `e.repeat` or equivalent Tizen keydown repeat. ArrowRight from left cluster and ArrowLeft from right cluster return focus to bottom bar. Extend hide guard while a side button has focus, mirroring Scrubber guard; never leave focus on an element that becomes invisible (reuse existing `hideControlsNow` rescue). Keep Tizen Back/Esc handling unchanged. `hp-focus` rings stay clear. TV path must take at most two presses from bar to either cluster.
+
+**Parity matrix (mandatory):** In `AUDIT_REPORT.md`, table every existing key (arrows, OK/Enter, Space, M, F, Esc/Back, Tizen codes, media keys, etc.) and its result before and after. Nothing may differ except the two additive bar-end transitions.
+
+**Acceptance:** both clusters usable by remote and mouse; held OK ramps; indicator visible; controls do not hide while side button is focused; Samsung TV behavior is **VERIFY ON TV**. All gates green.
+
+**Commit:** `T13.7: TV/PC brightness/volume side buttons + D-pad navigation (owner-authorized exception #5.6) — gate passed`
+
+### T13.8 — Issue 8: phone control lock with drag-to-pause/play
+
+**Sub-scope:** Exception #5.7. **Files:** `web/src/components/MediaPlayer.tsx`, pure helpers in `web/src/lib/mobilePlayer.ts`, tests in `web/src/lib/__tests__/mobilePlayer.test.ts`, and task documentation. Phone only (`isPhonePlayer()`); do not render on TV/PC/tablet.
+
+**Design and behavior:** Add a glass `h-10 w-10` Lock button to the phone controls overlay, 12px from the left edge and vertically centered. Its indicator offset must prevent overlap (T13.6 starts at `max(64px, 14%)`). Tapping Lock enters locked state, immediately hides all controls including lock button, and shows “Locked” briefly (~1s); playback continues. Lock is not persisted and resets on close or a different file.
+
+While locked, disable brightness/volume drags, surface tap-to-toggle, Scrubber, Fullscreen, Settings, and PiP. Screen tap reveals only a small glass closed-lock handle at the left edge; while playing it auto-hides after `HIDE_AFTER_MS` (3s). Drag the handle right at least 32px to toggle pause/play without unlocking; it follows the finger to about 56px then snaps back. Each later drag toggles again. While paused, handle remains visible and shows a small Play glyph. Tapping the handle unlocks and restores controls under normal auto-hide rules.
+
+Use pointer capture and `touch-action: none` on the handle; ignore non-primary pointers and handle pointercancel. Under 8px movement is a tap/unlock; over 8px horizontal movement is a drag and never unlocks. Handle must be a real `<button>` with `aria-label="Unlock controls"` and accessible pause/play state label. Center play button is hidden while locked; only handle drag toggles playback.
+
+**Safety:** Auto-unlock on video end, playback error, or any dialog (device-limit popup, admin kick, etc.). Read current Escape/Backspace/BrowserBack handling near the handler and any history/popstate logic before changing Back behavior. If Back closes the player, while locked first Back reveals the handle with “Tap the lock to unlock” and does not close; a second Back within 2s may close. Document exactly what exists and what is implemented in `AUDIT_REPORT.md`. Never create an inescapable state. Heartbeat, resume, and playback logic remain untouched; lock is pure UI state.
+
+**Pure-helper tests:** tap-vs-drag classification, drag threshold, pause/play toggle decision, and auto-unlock conditions.
+
+**Acceptance checklist:** record each as CONFIRMED by tests/reasoning or VERIFY ON DEVICE: lock visible in portrait/landscape without indicator overlap; lock hides controls while video plays; screen tap shows only handle and playing handle hides in 3s; right drag pauses then resumes while locked; handle tap unlocks; brightness/volume drags disabled while locked; dialogs/errors unlock and remain usable; reopen starts unlocked; TV/PC unchanged. Physical behavior is **VERIFY ON DEVICE**. All gates green.
+
+**Commit:** `T13.8: Mobile control lock with drag-to-pause/play (owner-authorized exception #5.7) — gate passed`
+
+### T13.9 — Issue 6a: household playback count endpoint
+
+**Sub-scope:** none (backend only). **Files:** `backend/app/routers/playback.py`, `backend/app/schemas.py`, `backend/tests/test_playback.py`, `web/src/lib/api.ts` (contract comment only), and task documentation. `web/src/components/MediaPlayer.tsx` diff must be empty. Do not change limiter `backend/app/playback.py`.
+
+**Why:** Guest `GET /api/playback/active` hides other users' sessions, so guests need a privacy-safe household-wide count.
+
+**Implementation:** Add schema `PlaybackCountOut { active: int, limit: int }`. Add authenticated `GET /api/playback/count` for family and guest, using the same auth dependency as the router's other read endpoints and existing rate-limit conventions. Return exactly `{"active": N, "limit": L}`: `active` from existing `limiter.active()` (which purges expired TTL sessions); `limit` from configured maximum (`settings.max_playback_devices` / `limiter.max_devices`). No names, labels, file or owner information. Update router module contract docstring and `api.ts` contract comment only; use `response_model` and existing error conventions.
+
+**Tests:** guest sees household count including other users; family caller; TTL expiry → active 0; unauthenticated status matches existing playback endpoints (401 or repository convention); limit equals configured setting; exactly the two JSON keys. Preserve existing tests.
+
+**Gate:** full backend compileall, pip check, pytest; full frontend gates to prove no other changes; empty MediaPlayer diff.
+
+**Commit:** `T13.9: Household playback count endpoint — gate passed`
+
+### T13.10 — Issue 6b: home live-devices chip, popup text, and flow verification
+
+**Sub-scope:** Exception #5.8, copy-only `DeviceLimitDialog` text. **Files:** new `web/src/components/LiveDevicesChip.tsx`; `web/src/components/FileBrowser.tsx` (import/render by RolePill); `web/src/lib/api.ts` (fetcher, key, hook); `web/src/lib/__tests__/api.test.ts`; only DeviceLimitDialog text in `web/src/components/MediaPlayer.tsx`; task documentation. Backend does not change; T13.9 provides `GET /api/playback/count` returning `{active, limit}`.
+
+**API:** `fetchPlaybackCount()` returns `{active:number; limit:number}` from `/playback/count`, following `fetchActiveDevices` typed-error conventions. Add query key and React Query hook using repository naming. Old-server 404/405 means feature unavailable: chip silently renders nothing, no error toast/console spam. Other errors retain last known value. Poll every 15s only while FileBrowser/home is mounted; pause while tab hidden; refetch on window focus/visibility change.
+
+**Chip:** New `LiveDevicesChip.tsx`, rendered beside RolePill. Dot plus “N watching” from `sm` up and “N/limit” on phones; limit must come from server, never hard-code 2. Colors: 0 neutral grey, 1 green `#34d399`, 2 orange `#fbbf24`, 3+ red `#f43f5e` (defensive state though a third device is blocked). Use `role="status"`, `aria-live="polite"`, not focusable (`tabIndex=-1`/no interactive element) so TV focus order is unchanged. Low-key RolePill styling; no backdrop-filter. Test pure color/text mapping for 0/1/2/3/5 and limit 2 plus another limit; test API 404/405 handling.
+
+**Dialog text only:** title “Two devices are already playing” → “Maximum watch devices reached”. Body says maximum devices are already watching, retains existing ask-family-account/try-again wording, and does not hard-code “two”. Keep device list, admin Stop buttons, Try again, and Close exactly unchanged. No logic, props, hooks, or layout changes.
+
+**Verify existing third-device block by reading code/tests; do not change it:** record evidence that POST `/playback/start` at limit returns 409 `DEVICE_LIMIT` before any bytes; web maps it to DeviceLimitDialog; admin Stop frees a slot; guest copy appears; player close sends stop or slot expires after 75s. If a real bug appears, stop and report, no out-of-scope fix. Record owner **VERIFY ON DEVICE** for two devices playing/third attempt popup and chip 1 green/2 orange.
+
+Document counter semantics: limiter slot-holders include `prewarmPlayback` after card hover/focus at 220ms; browsing can hold a slot up to 75s, and paused playback frees it after 75s. Existing limiter behavior is unchanged.
+
+**Acceptance:** chip hidden on old server, correct new-server text/colors, TV focus unchanged, popup wording updated. The MediaPlayer diff must contain only dialog text lines, included in the report. All gates green.
+
+**Commit:** `T13.10: Home live-devices chip + device-limit popup text + flow verification — gate passed`
+
+### T13.11 — Final freeze gates, RC candidate, and deploy handoff (docs only)
+
+**Sub-scope:** none (docs only). **Files:** `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, `AUDIT_REPORT.md`. Optional `docs/RELEASING.md` rewrite (stale Android-APK-era text) and T12.2–T12.5 checkbox reconciliation are permitted only with owner approval in the task prompt; otherwise leave both untouched.
+
+**Implementation and gates:**
+
+1. Run all backend/frontend gates from a fresh clean checkout of main, fresh Python 3.13 venv and Node 20; `npm ci`; compare test counts against T13.1 (none may drop except tests removed by T13.4 and listed there).
+2. Review line-by-line `git diff a910a72cb29e975b93febc7eb7d2783c952305d..HEAD -- web/src/components/MediaPlayer.tsx`. Table each hunk against #5.1–#5.8. Any unauthorized hunk is a finding; do not conceal it.
+3. Confirm the T13.7 keymap parity table still holds. List every intentional TV/PC difference: volume cluster removed, hide at 3s, glass play button, side buttons/bar-end navigation, dialog text.
+4. Security greps: no committed secrets/tokens; compare auth-before-cache in `backend/app/streaming.py` and `byte_cache.py`, and `backend/app/playback.py` limiter against a910a72. `git diff a910a72..HEAD --stat` must show no changes to `deploy/`, `auth.py`, `streaming.py`, `byte_cache.py`, models/database, or `bot.py`.
+5. Confirm zero dependency changes (`package.json`, lockfile, backend requirements) and zero DB schema changes versus a910a72; rollback to `deploy-T12.90.2-rc` remains safe.
+6. Freeze Exception #5 in `HANDOFF.md`: close all sub-scopes and re-freeze MediaPlayer. Record RC candidate commit and tree SHA; the owner tags the merged T13.11 commit on main, which may differ from the candidate due to merge/squash.
+7. Set Current Task to “OWNER deploy step” and document owner-only deployment:
+   - `git checkout main && git pull`; verify HEAD is merged T13.11; `git tag deploy-T13.11-rc && git push origin deploy-T13.11-rc`. Agent never tags.
+   - Hard-refresh `teleplay.pages.dev` and confirm final build.
+   - Per `deploy/README.md` §4 on VPS: `sudo -u hearth git -C /opt/hearth/app fetch --tags`; checkout `deploy-T13.11-rc`; no dependency changes, no reinstall; `sudo systemctl restart hearth`; loopback `curl 127.0.0.1:8000/health/ready`; `journalctl -u hearth -n 50` (bot handlers registered); authenticated GET `/api/playback/count` returns `{"active":N,"limit":2}`.
+   - Smoke matrix: phone portrait/all icons/Fullscreen on Android and iPhone; left/right drags with indicator only while dragging; lock/handle/drag pause-play/unlock; glass button over dark/bright frames; 3s hide on phone/PC/TV; TV D-pad reaches brightness/volume, hold-OK ramps, old keys unchanged; two devices plus third-device “Maximum watch devices reached” popup; chip 1 green/2 orange; closing a player frees a slot within about 75s.
+   - Rollback: on VPS checkout `deploy-T12.90.2-rc` and restart. No schema/dependency changes; old server supports new web build because chip hides on 404/405. Pages may roll back to prior deployment.
+8. Consolidate every remaining VERIFY ON DEVICE / TV / VPS item from T13.2–T13.10 in `AUDIT_REPORT.md`.
+
+**Commit:** `T13.11: T13 final freeze gates + RC candidate handoff — gate passed`
 
 ## T12.91 — Stale bundle and VPS resource recovery
 

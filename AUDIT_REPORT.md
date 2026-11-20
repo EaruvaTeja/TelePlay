@@ -547,3 +547,37 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - Frontend: `npm ci`: **PASS**, 447 packages (24 dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); lint and typecheck **PASS**; tests **3 files, 170 passed**; build **PASS**; `dist/_redirects` **present**; `npm audit --omit=dev`: **0 production vulnerabilities**. No dependency changes.
 - `git diff --check`: **PASS**; `MediaPlayer.tsx` diff: **empty**; requirements/package manifests and lockfiles unchanged.
 - **VERIFY ON VPS:** observe a transient auth-key error recover without persistent readiness loss, then validate the operator workflow after three failures in 60 seconds. No live Telegram/VPS recovery test was performed.
+
+## T13.1 baseline — phase authorization and docs re-baseline
+
+### Changes and scope — CONFIRMED
+
+- Recorded the 2026-11-20 owner authorization as Exception #5 with independently scoped, task-specific MediaPlayer permissions; this docs-only task did not exercise any sub-scope.
+- Added the T13.1–T13.11 task cards, dependency map, progress checklist, and hold status for T12.91, T12.92, T0, T15, and T16.
+- Files touched: `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md` only. No source, test, dependency, deploy, or configuration file changed. No tests were deleted.
+- TV/PC parity note: T13.1 changes no player code or runtime behavior. The only TV/PC behavior changes authorized for later tasks are #5.1 volume-cluster removal, #5.2 3-second hide time, #5.4 glass center button, #5.6 side controls and bar-end navigation, and #5.8 dialog text. All other TV/PC behavior remains frozen.
+
+### Pre-flight and measured baseline — CONFIRMED
+
+- `git fetch origin main` completed. `origin/main` is `2425155ad6748f4f7f0eba294c11d9507001235e`, and that required commit is an ancestor of main. Branch `hearth/t13.1` was created at that main tip.
+- Compared the live baseline `a910a72cb29e975b93febc7eb7d2783c952305d` with the tested main-tip source: `web/src` has no tracked drift. The only allowed source-adjacent exception, `web/public/logo.png`, is documented as the updated logo asset.
+- Backend, Python 3.13.0: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings**.
+- Frontend, Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 178 tests passed**; `npm run build` — **PASS**; `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- Built JavaScript output — **993,765 bytes total**: `polyfills-legacy-BslUr3KK.js` 131,674 bytes; `index-legacy-C-1jBHm_.js` 457,631 bytes; `index-FoOluuwU.js` 404,460 bytes.
+- The frontend install reported 24 total dependency-tree advisories (1 low, 6 moderate, 15 high, 2 critical); the required production-only audit found zero vulnerabilities. No dependency changes were made.
+- The source and test tree tested is the exact `origin/main` commit. Two unrelated pre-existing untracked artifacts (`backups_t12.92/` and `hearth-t12.90.2.bundle`) were left untouched.
+
+### Standing notes
+
+1. **CONFIRMED from the owner-provided deployment instructions:** Cloudflare Pages auto-publishes on merge to `main`, while the VPS stays on tag `deploy-T12.90.2-rc` until the owner deploys. Every web change must therefore continue to work against the old server.
+2. **CONFIRMED as the owner-provided phase plan:** Between T13.2 and T13.6/T13.7 there is temporarily no in-app volume control. Hardware volume keys, top-bar Mute, and the M key are intended to continue working. The owner intends to merge T13.2–T13.8 in one sitting.
+3. **CONFIRMED by the existing limiter contract recorded in repository docs:** the home counter counts limiter slot-holders: playing or pre-warmed sessions within the 75-second TTL. A paused video frees its slot after 75 seconds. This is existing limiter behavior and is not changed.
+4. **Owner-reported, not independently re-audited:** `docs/RELEASING.md` is stale Android-APK-era text. **CONFIRMED by PROGRESS.md inspection:** T12.2–T12.5 checkboxes are unticked although log lines record passed gates. Both are reserved for T13.11 and require owner approval.
+
+### Open owner verification and deviations
+
+- **VERIFY ON DEVICE:** after implementation, verify phone portrait/fullscreen, Android and iOS fullscreen behavior, brightness/volume drags, lock/handle gestures, and the device-limit flow.
+- **VERIFY ON TV:** after implementation, assess the 3-second D-pad auto-hide usability and Samsung TV side-button navigation/hold-OK behavior.
+- **VERIFY ON VPS:** after implementation and owner deployment, verify the household count endpoint and device-limit flow against the deployed server. No VPS or physical-device checks were performed for T13.1.
+- Deleted tests: **none**.
+- Deviations / findings: before this task, `PLAN.md` did not contain T13.1–T13.11, despite the task ritual saying a T13.1 entry already existed; the task specification explicitly required adding all eleven entries, so they were added once. The prior progress state listed T12.91 as the current on-hold task; this owner-provided T13.1 task is the active phase authorization, and the on-hold tasks remain on hold. No future-task code audit was performed because T13.1 is docs-only and explicitly forbids preparing another task; any implementation/spec mismatch must be recorded when the relevant task is executed.
