@@ -38,7 +38,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | T12.87 | OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls/center play-pause. |
 | T12.88 | Verify mobile/TV/PC parity and apply the final `MediaPlayer.tsx` freeze. |
 | T12.89 | Prove schema with `verify_schema.py`; fix deploy runbooks; validate proxy configuration; record provenance. |
-| T12.90 | Reliability hardening (A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default `confirm=False`, refresh-lifetime decision); run final clean-checkout gates and record freeze-candidate SHA. |
+| T12.90 | Reliability hardening (A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default `confirm=False`, refresh-lifetime decision); replace the banner; run final clean-checkout gates and record freeze-candidate SHA. |
 | T12.91 | Stale bundle and VPS disk/RAM recovery; incident A-item tracking. |
 | T12.92 | Final freeze plus T0-R, T15-R, and T16-R gate reruns before handoff. |
 
@@ -375,7 +375,15 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T12.90 — Reliability hardening and clean-checkout freeze candidate
 
-**Scope:** harden reliability with the A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default `confirm=False`, and a refresh-lifetime decision. Run final clean-checkout gates and record the freeze-candidate SHA.
+**Files:** `backend/app/main.py`, `backend/app/telegram.py`, `backend/app/streaming.py`, `backend/app/playback.py`, `backend/app/bot.py` (sync default only), `backend/app/config.py` (refresh default only), `backend/tests/`, `files/app_banner.png`, `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+**Scope:** permanently fail startup if the lifespan bot import registers zero handlers; reject playback device IDs owned by another account; mark Telegram clients unhealthy on `AuthKeyUnregistered`, `AuthKeyDuplicated`, or `SessionRevoked`, stop retrying those clients, expose a precise readiness reason, and preserve session files with class-specific recovery guidance. Make reconciliation dry-run by default, keep supervised sync dry-run only, retain explicit `/sync confirm`, and report safety aborts distinctly. Reduce the environment-overridable refresh-token default from 90 to 30 days; document the accepted household residual risk and defer the full rotation matrix to P2. Replace `files/app_banner.png` byte-for-byte with the owner-supplied `C:\Users\earuv\Downloads\app_banner.png`. Do not change dependencies or `MediaPlayer.tsx`.
+
+**Gate:** from a fresh clean checkout and fresh Python 3.13 environment install `requirements-dev`; run full `pytest -q`, `compileall -q app`, `pip check`, record `pip freeze`, and run `pip-audit -r requirements.txt` without blind upgrades. On Node 20 run `npm ci`, lint, typecheck, tests, build, confirm `dist/_redirects`, and run `npm audit --omit=dev` without `--force`. Verify tracked-file hygiene (no `.env`, session, or dump artifacts), no active folder/QR legacy code, the authorized-only MediaPlayer diff, and exact banner source/destination hashes plus Git tracking. Append complete gate evidence with versions, counts, audit outcomes, tested SHA/tree, and freeze-candidate state to `AUDIT_REPORT.md`.
+
+**VERIFY ON VPS:** unhealthy-client reporting and auth-key recovery, cross-account device-ID rejection, sync safety-abort behavior, and banner rendering after deployment. Keep T12.91, T0-R, T12.92, T15-R, and T16-R on hold; the owner tags `deploy-T12.90-rc` only after merge.
+
+**Commit:** `T12.90: Reliability hardening + final release gates & freeze evidence — gate passed`
 
 ## T12.91 — Stale bundle and VPS resource recovery
 

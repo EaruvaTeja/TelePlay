@@ -67,6 +67,14 @@ This v2 handoff supersedes the T12-era handoff for ALL remaining work.
 * **CONFIRMED — VPS resources:** disk is 75% used (3.0 GB of 4.0 GB); RAM is 210 MB used of 512 MB.
 * **VERIFY ON VPS:** actual origin HEAD, service liveness, WARP routing, bundle removal/archive, and live memory/disk measurements must be rechecked before T15.
 
+## T12.90 release-freeze candidate
+
+* **CONFIRMED by source/tests:** lifespan fails closed if no bot handlers register; playback device IDs cannot be taken over across owners; runtime stream auth-key failures mark the affected Telegram client unhealthy, stop its retries, and expose an operator recovery reason; startup sync and the `sync_with_channel()` default are dry-run only, with explicit `/sync confirm` protected by the existing safety guard.
+* **CONFIRMED by configuration:** the refresh-token default is 30 days and remains environment-overridable. Accepted household residual risk: a refresh token stolen from a household device may remain usable until expiry or revocation; the full token-rotation matrix is deferred to P2.
+* **CONFIRMED by file verification:** `files/app_banner.png` is replaced with the owner-supplied image. Exact hash, Git tracking, and commit evidence are recorded in the T12.90 final gate section of `AUDIT_REPORT.md`.
+* **VERIFY ON VPS:** Telegram unhealthy-client reporting and the operator recovery workflow; cross-account device-ID conflict behavior; `/sync confirm` safety-abort response; and banner rendering after deployment. No live VPS behavior is claimed by this local task.
+* The T12.90 clean-checkout gate evidence and freeze-candidate tree/SHA are recorded in `AUDIT_REPORT.md` and `PROGRESS.md`. T12.91, T0-R, T12.92, T15-R, and T16-R remain **ON HOLD**. The owner tags `deploy-T12.90-rc` only after merging the reviewed branch; this task does not deploy or create a tag.
+
 ---
 
 ## Agent Report Format (end of every task)

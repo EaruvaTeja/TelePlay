@@ -113,3 +113,17 @@ def test_telegram_proxy_rejects_unsupported_scheme_when_host_is_set(monkeypatch)
 
     with pytest.raises(ValidationError, match="TELEGRAM_PROXY_SCHEME"):
         Settings()
+
+
+def test_refresh_token_default_is_thirty_days(monkeypatch):
+    _base(monkeypatch)
+    monkeypatch.delenv("REFRESH_TOKEN_DAYS", raising=False)
+
+    assert Settings(_env_file=None).refresh_token_days == 30
+
+
+def test_refresh_token_days_remains_environment_overridable(monkeypatch):
+    _base(monkeypatch)
+    monkeypatch.setenv("REFRESH_TOKEN_DAYS", "17")
+
+    assert Settings(_env_file=None).refresh_token_days == 17

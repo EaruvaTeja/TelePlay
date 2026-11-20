@@ -10,6 +10,7 @@ import asyncio
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 
 from app.auth import verify_stream_token
 from app.playback import PlaybackLimiter
@@ -60,6 +61,38 @@ def test_restart_same_device_does_not_consume_second_slot():
     assert ok is True
     assert len(lim.active()) == 2
     assert lim.get("A").file_id == 2
+
+
+def test_playback_start_rejects_cross_owner_device_id_reuse_with_409(monkeypatch):
+    from fastapi import HTTPException
+
+    from app.routers import playback as playback_router
+    from app.schemas import PlaybackStartIn
+
+    async def fake_get_meta(file_id):
+        return object()
+
+    monkeypatch.setattr(playback_router, "get_meta", fake_get_meta)
+    lim, _ = make_limiter()
+    monkeypatch.setattr(playback_router, "limiter", lim)
+    body = PlaybackStartIn(
+        file_id=1,
+        device_id="shared-device-id",
+        device_label="Shared Device",
+    )
+    owner_a = SimpleNamespace(id=1, role="admin", auth_version=0)
+    owner_b = SimpleNamespace(id=2, role="admin", auth_version=0)
+
+    asyncio.run(playback_router.start_playback(body, current_user=owner_a))
+    before = lim.get(body.device_id)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(playback_router.start_playback(body, current_user=owner_b))
+
+    assert exc_info.value.status_code == 409
+    assert lim.get(body.device_id) is before
+    assert lim.get(body.device_id).owner_id == owner_a.id
+    assert lim.heartbeat(body.device_id, owner_id=owner_a.id) is True
 
 
 # ─────────────────────────── 3–4: TTL & stop ─────────────────────────────────

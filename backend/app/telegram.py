@@ -57,6 +57,9 @@ __all__ = [
     "clients",
     "start_all_clients",
     "stop_all_clients",
+    "is_client_healthy",
+    "mark_client_unhealthy",
+    "get_telegram_health_failure",
     "forward_to_storage_channel",
     "delete_from_storage_channel",
     "get_message_from_channel",
@@ -136,6 +139,67 @@ for i, token in enumerate(settings.telegram_helper_bot_tokens):
 # All active clients (main + helpers) for the streaming engine
 clients: list[Client] = [tg_client] + _helper_clients
 
+# Runtime auth-key failures are process-fatal for the affected client. Keep
+# the session files intact; recovery is an explicit operator action.
+telegram_auth_key_unhealthy = False
+telegram_auth_key_failure_reason: str | None = None
+_unhealthy_clients: dict[int, str] = {}
+_AUTH_KEY_RECOVERY = {
+    AuthKeyUnregistered: (
+        "Preserve and back up the session directory, then re-authorize this "
+        "client using the approved procedure and restart Hearth. Do not delete "
+        "session files automatically."
+    ),
+    AuthKeyDuplicated: (
+        "Stop any duplicate process using this session directory, preserve the "
+        "session files, and restart Hearth only after one process remains."
+    ),
+    SessionRevoked: (
+        "Preserve and back up the session directory, complete the approved "
+        "Telegram re-authorization procedure, and restart Hearth. Do not delete "
+        "session files automatically."
+    ),
+}
+
+
+def is_client_healthy(client: Any) -> bool:
+    return id(client) not in _unhealthy_clients
+
+
+def _auth_key_recovery(error: BaseException) -> str:
+    for error_type, recovery in _AUTH_KEY_RECOVERY.items():
+        if isinstance(error, error_type):
+            return recovery
+    return "Stop Hearth, preserve the session files, and escalate to the operator."
+
+
+def mark_client_unhealthy(client: Any, error: BaseException) -> None:
+    global telegram_auth_key_unhealthy, telegram_auth_key_failure_reason
+
+    error_type = type(error)
+    if not any(isinstance(error, known_type) for known_type in _AUTH_KEY_RECOVERY):
+        return
+    recovery = _auth_key_recovery(error)
+
+    reason = f"{error_type.__name__}: {recovery}"
+    _unhealthy_clients[id(client)] = reason
+    telegram_auth_key_unhealthy = True
+    reasons = list(dict.fromkeys(_unhealthy_clients.values()))
+    telegram_auth_key_failure_reason = "; ".join(reasons)
+    logger.critical(
+        "Telegram client %s marked unhealthy after %s. %s",
+        getattr(client, "pool_index", "unknown"),
+        error_type.__name__,
+        recovery,
+    )
+
+
+def get_telegram_health_failure() -> str | None:
+    if not telegram_auth_key_unhealthy:
+        return None
+    return telegram_auth_key_failure_reason
+
+
 # Track which clients actually started, so shutdown only stops those.
 _started_clients: set[Client] = set()
 
@@ -174,10 +238,10 @@ async def start_one_client(client: Client, is_main: bool = False) -> bool:
     except (AuthKeyUnregistered, AuthKeyDuplicated, SessionRevoked) as e:
         # Fatal auth errors: session file is invalid or revoked.
         logger.error(
-            "Client %s failed with fatal auth error: %s. "
-            "Delete the session file and restart.",
+            "Client %s failed with fatal auth error (%s). %s",
             name,
-            e,
+            type(e).__name__,
+            _auth_key_recovery(e),
         )
         if is_main:
             raise RuntimeError(f"Main bot client failed to authenticate: {e}") from e

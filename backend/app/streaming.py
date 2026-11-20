@@ -43,8 +43,15 @@ import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from pyrogram.errors import AuthKeyDuplicated, AuthKeyUnregistered, SessionRevoked
+
 from .config import get_settings
-from .telegram import clients
+from .telegram import (
+    clients,
+    get_telegram_health_failure,
+    is_client_healthy,
+    mark_client_unhealthy,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -57,6 +64,7 @@ MSG_CACHE_MAX = 256
 
 _semaphores: dict[int, asyncio.Semaphore] = {}
 _msg_cache: dict[tuple[int, int, int], tuple[float, Any]] = {}
+_AUTH_KEY_ERRORS = (AuthKeyUnregistered, AuthKeyDuplicated, SessionRevoked)
 
 
 class StreamUnavailable(Exception):
@@ -159,10 +167,11 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
     missing. Raises StreamUnavailable for errors or a live but unusable message.
     """
     chat_id = settings.telegram_storage_channel_id
-    pool = list(clients)
+    pool = [client for client in clients if is_client_healthy(client)]
     if not pool:
+        reason = get_telegram_health_failure()
         raise StreamUnavailable(
-            "Telegram client pool is empty (server still starting?)"
+            reason or "Telegram client pool is empty (server still starting?)"
         )
 
     async def one(i: int, c: Any) -> tuple[int, Any, Any | None, str]:
@@ -172,7 +181,14 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error("Bot %s: cannot fetch message %s: %s", idx, message_id, e)
+            if isinstance(e, _AUTH_KEY_ERRORS):
+                mark_client_unhealthy(c, e)
+            logger.error(
+                "Bot %s: cannot fetch message %s (%s)",
+                idx,
+                message_id,
+                type(e).__name__,
+            )
             return idx, c, None, "error"
         if msg is not None and not _media_of(msg):
             return idx, c, msg, "unusable"
@@ -208,6 +224,9 @@ async def _refresh(c_idx: int, client: Any, msg: Any) -> Any:
         return fresh or msg
     except asyncio.CancelledError:
         raise
+    except _AUTH_KEY_ERRORS as e:
+        mark_client_unhealthy(client, e)
+        raise
     except Exception as e:
         logger.warning("Bot %s: file-reference refresh failed: %s", c_idx, e)
         return msg
@@ -235,14 +254,21 @@ async def stream_file(
     attempts = MAX_CLIENT_ATTEMPTS  # independent of how many bots we have
 
     for attempt in range(attempts):
-        c_idx, client, msg = ctx[attempt % len(ctx)]
+        available = [entry for entry in ctx if is_client_healthy(entry[1])]
+        if not available:
+            break
+        c_idx, client, msg = available[attempt % len(available)]
 
         # Every second retry (or on a stale reference) pull a fresh message:
         # this refreshes the file reference AND the DC routing info.
         if attempt and (
             attempt % 2 == 0 or "FILE_REFERENCE" in str(last_error).upper()
         ):
-            msg = await _refresh(c_idx, client, msg)
+            try:
+                msg = await _refresh(c_idx, client, msg)
+            except _AUTH_KEY_ERRORS as e:
+                last_error = e
+                continue
 
         byte_offset = from_bytes + delivered
         start_chunk = byte_offset // CHUNK_SIZE
@@ -285,6 +311,8 @@ async def stream_file(
                     break
                 if isinstance(item, BaseException):
                     last_error = item
+                    if isinstance(item, _AUTH_KEY_ERRORS):
+                        mark_client_unhealthy(client, item)
                     break
 
                 chunk = item
@@ -320,6 +348,8 @@ async def stream_file(
             return
         if attempt >= attempts - 1:
             break
+        if isinstance(last_error, _AUTH_KEY_ERRORS):
+            continue
 
         wait = getattr(last_error, "value", None)
         if isinstance(wait, int) and 0 < wait <= 30:
@@ -337,6 +367,15 @@ async def stream_file(
                 delay,
             )
             await asyncio.sleep(delay)
+
+    if not any(is_client_healthy(entry[1]) for entry in ctx):
+        reason = get_telegram_health_failure()
+        raise StreamUnavailable(reason or "No healthy Telegram clients remain") from last_error
+
+    if isinstance(last_error, _AUTH_KEY_ERRORS):
+        raise StreamUnavailable(
+            f"Telegram client authentication failed: {type(last_error).__name__}"
+        ) from last_error
 
     raise last_error or RuntimeError(
         f"short stream: delivered {delivered} of {total} bytes"
