@@ -677,3 +677,29 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **CONFIRMED:** backend count matches T13.1 (226). Frontend count is 35 versus 178 at T13.1, with the 147 authorized removed cases and four new fallback cases detailed above. `git diff --check` — **PASS**.
 - **CONFIRMED:** `MediaPlayer.tsx` hunks are limited to: T12.86 orientation/pseudo-landscape removal; keeping the scrubber unrotated; phone-only WebKit fullscreen detection, state/events, entry/exit calls and error logging; and phone-only compact button/time/group classes. No other `MediaPlayer.tsx` behavior was intentionally changed.
 - Deviations / findings: **none**. No live or physical-device checks were performed.
+
+## T13.5 — Glass center play/pause button
+
+### Changes and scope — CONFIRMED
+
+- **CONFIRMED:** updated only the class strings on the paused-center Play button and phone-playing Pause button. Both now use the specified translucent rgba fill/hover, thin teal border, and light icon color; the Play/Pause SVGs receive the specified drop shadow.
+- **CONFIRMED:** kept the `hp-focus` ring, `h-20 w-20`, `rounded-full`, transition, hover/active scaling, and Play icon `ml-1`. Click handlers and surrounding controls are unchanged. The mini-player bar button and all other buttons are untouched.
+- **CONFIRMED:** no `backdrop-filter` or dependency was added. The production build CSS contains the requested base/hover fill, border, and drop-shadow values.
+- Files changed: `web/src/components/MediaPlayer.tsx`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` was unchanged because the existing T13.5 card matched the implementation.
+
+### Parity and verification — CONFIRMED / VERIFY
+
+- **CONFIRMED by diff:** this is a visual-only change. The paused-center button is shared; its appearance changes on TV/PC as explicitly authorized by #5.4. The playing-center Pause button is phone-only. No event handler, focus order, dimensions, or playback behavior changed.
+- **CONFIRMED:** `hp-focus` remains on both buttons; source diff preserves required dimensions, scaling, transition, and Play optical offset.
+- **VERIFY ON DEVICE:** check readability over both dark and bright video frames and verify the phone playing-state Pause button.
+- **VERIFY ON TV:** check that the focus ring remains clearly visible and the glass button remains legible on the Samsung TV browser.
+- **VERIFY ON DEVICE:** confirm PC paused-center appearance and focus treatment.
+- **VERIFY ON VPS:** none required; there is no server/API change.
+- **CONFIRMED:** deleted tests: **none**. No tests were added for this class-only change.
+- **CONFIRMED:** deviations / findings: **none**. No physical-device or VPS checks were performed.
+
+### Gates — CONFIRMED
+
+- Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings**.
+- Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 35 tests passed**; `npm run build` — **PASS** (1,529 modules); `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** backend test count matches the T13.1 baseline (226); frontend count remains 35 from the T13.4 branch baseline (T13.5 adds/deletes no tests). `git diff --check` — **PASS**.
