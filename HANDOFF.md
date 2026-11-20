@@ -55,6 +55,8 @@ This v2 handoff supersedes the T12-era handoff for ALL remaining work.
 **T13.8.2 completion:** Exception #5.7.2 was used only for the phone lock's state-aware action icon, right-drag progress dot, lock notice copy/sizing, and screen-reader reference cleanup; it is re-frozen. TV/PC/tablet behavior and playback/session logic remain unchanged. Physical phone behavior remains **VERIFY ON DEVICE**. Current regular task pointer remains T13.10.
 
 **T13.10 completion:** Exception #5.8 was used only for the DeviceLimitDialog title/body copy and is re-frozen. The home live-devices chip is mounted with FileBrowser, is non-focusable, and uses the server-provided limit; no backend, limiter, playback, or auth behavior changed. Source and unit-test review confirms the existing limit/stop/TTL flow; actual client/server behavior remains **VERIFY ON DEVICE / VERIFY ON TV / VERIFY ON VPS** as listed in `AUDIT_REPORT.md`. Current task pointer: T13.11.
+
+**T13.11 completion:** No MediaPlayer exception was used. Exception #5 is closed: sub-scopes #5.1–#5.8, including #5.7.1 and #5.7.2, are complete and re-frozen; `MediaPlayer.tsx` is frozen again. The tested code candidate is `c7d82f53f28fb823c79fb047aec4794fd63a84ba` (tree `ca77f9ac70da58a4fa152e8a27d24268be3005f6`). T13.11 changes documentation only. Current task pointer: **OWNER deploy step**.
 4. **Strict Scope Lock (locked product):** Web-only, flat shared library (no folders/search/multi-select/rename/move/QR/public links/transcoding/Redis/Android). Family = 8-digit one-time code (5 min TTL). Guest = 6-digit PIN, 24 h, play-only, no refresh token. **Max 2 concurrent streams HOUSEHOLD-WIDE** (1 guest + 1 family = full; 3rd device → 409 popup, zero bytes). 5 login attempts/device/hour (+20/IP/hour). Telegram-first delete with DB compensation. Samsung Tizen TV browser is the PRIMARY client.
 5. **Preserve Known-Good Code:** auth-before-cache in `routers/streaming.py`; atomic one-time login-code consumption (`DELETE … RETURNING`); fail-closed config validators; HMAC-peppered guest PIN + constant-time compare; family `ver`/membership + guest `gv` revocation on the media path; Telegram-first delete & upload compensation; filename sanitizer and `escape_like` (already correct — never run "repair" scripts on them).
 6. **Gate Verification Required:** Run the task's Gate from `PLAN.md` yourself before committing. Never weaken or delete an existing security test to make a suite pass. Cross-platform note: `caddy validate` / `systemd-analyze verify` may not exist on the dev machine — run them if available, otherwise do a documented static review; live validation is MANDATORY on the VPS in T15 before reload.
@@ -156,6 +158,57 @@ Auth before any cache/byte on every GET/HEAD/Range · stream tokens bound to fil
 ## Rollback (summary)
 
 Keep previous SHA available; stop service before switching code; never roll back across incompatible schema; env + sessions live OUTSIDE the checkout so code rollback can't delete them; never drop tables to "fix" schema — restore the verified Neon dump instead (record time/cause; post-backup uploads may be lost); restore sessions only to the single instance with correct ownership/modes.
+
+## T13.11 Final Freeze and OWNER Deploy Handoff
+
+The T13.11 clean-checkout gates passed against `main` commit
+`c7d82f53f28fb823c79fb047aec4794fd63a84ba`, tree
+`ca77f9ac70da58a4fa152e8a27d24268be3005f6`. The final merged T13.11 commit may
+have a different SHA because the owner creates/merges the PR. The owner tags
+that merged commit on `main`; the agent does not create or push tags.
+
+1. After merging the reviewed T13.11 PR, the owner runs:
+
+   ```bash
+   git checkout main && git pull
+   git rev-parse HEAD
+   git tag deploy-T13.11-rc
+   git push origin deploy-T13.11-rc
+   ```
+
+   Verify `HEAD` is the merged T13.11 commit before creating the tag.
+2. Confirm `teleplay.pages.dev` serves the final build and hard-refresh it.
+3. On the VPS, follow [deploy/README.md](deploy/README.md) section 4. Update the
+   existing checkout and validate service readiness:
+
+   ```bash
+   sudo -u hearth git -C /opt/hearth/app fetch --tags
+   sudo -u hearth git -C /opt/hearth/app checkout --detach deploy-T13.11-rc
+   sudo systemctl restart hearth
+   curl -fsS http://127.0.0.1:8000/health/ready
+   sudo journalctl -u hearth -n 50 --no-pager
+   ```
+
+   Confirm bot handlers are registered in the journal. Make an authenticated
+   `GET /api/playback/count` request; expect `{"active":N,"limit":2}`. No
+   dependency reinstall is required.
+4. Owner smoke matrix:
+   - Phone: portrait launch with every icon visible; Android and iPhone
+     fullscreen; left/right drag indicator only while dragging; lock/handle,
+     hold-to-unlock progress, drag-to-pause/play, unlock, and lock notices.
+   - Phone, PC, and TV: controls hide after 3 seconds; verify the glass play
+     button on dark and bright frames.
+   - TV: D-pad reaches brightness and volume clusters; held OK ramps; old keys
+     remain unchanged.
+   - Playback limit: two devices playing, third blocked with “Maximum watch
+     devices reached”; chip 1 is green and 2 is orange; stopping or closing a
+     player frees its slot within about 75 seconds.
+5. Rollback is schema/dependency safe: on the VPS check out
+   `deploy-T12.90.2-rc` and restart `hearth`. The old server is compatible with
+   the new web client (the chip hides on 404/405); Cloudflare Pages can be
+   rolled back to its previous deployment.
+
+`PROGRESS.md` Current Task: **OWNER deploy step**.
 
 ---
 
