@@ -31,7 +31,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 |---|---|
 | T12.81 | Enforce family stream-token revocation with version claims and User.id identity. |
 | T12.82 | Make `family_members.active` the live bot/API family authorization authority. |
-| T12.83 | Re-opened F-01 stream identity: bind token file/device/owner consistently. |
+| T12.83 | Make Telegram upload compensation commit-aware and file inserts idempotent by channel message ID. |
 | T12.84 | Re-opened F-02 source of truth: enforce `family_members` for family membership. |
 | T12.85 | Re-opened F-02 verify-code: remove static-`AUTH_USERS`/mint-admin bypass. |
 | T12.86 | OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape. |
@@ -300,9 +300,14 @@ Add uncached `is_active_member(telegram_id)` and make the private-message author
 **VERIFY ON VPS:** live DB membership add/remove behavior, including old login-code rejection and bootstrap-owner DB-wake behavior.
 **Commit:** `T12.82: family_members.active is the live bot/API authorization authority — gate passed`
 
-## T12.83 — Family stream identity repair: file/device/owner binding
+## T12.83 — Safe upload compensation and unique channel message IDs
 
-**Scope:** reopen F-01 only and repair stream-token identity so `create_stream_token` carries the required family version and `_auth_stream` resolves the same owner/device identity as `/playback/start`. Preserve auth-before-cache, the household-wide two-stream cap, guest `gv`, and existing exports.
+**Branch:** `hearth/t12.83` from latest `main`. **Files:** `backend/app/bot.py`, `backend/app/models.py`, `backend/app/database.py`, `backend/tests/test_bot_db_wake.py` (extend only), `backend/tests/test_files_operations.py` (extend), `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+Track `db_committed` in `handle_file()` and set it only after commit and refresh succeed. Keep success-message creation and status editing in a separate post-commit notification handler that logs failures and attempts a plain reply without deleting the forwarded media. Compensate only while the row is not known committed; after an uncertain commit, query by `channel_message_id`, retain media if a row exists, and report persistence despite notification failure. Add a unique model index and an idempotent PostgreSQL/SQLite index migration guarded by a duplicate pre-check that logs and skips when legacy duplicates exist. Upload inserts must be idempotent and reuse an existing row for the same channel message.
+
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build; confirm `dist/_redirects`. Regress post-commit Telegram edit failure without deletion, preserve existing commit-failure compensation and T12.4 DB-wake tests, and verify duplicate upload/index migration behavior.
+**Commit:** `T12.83: Safe upload compensation + unique channel_message_id — gate passed`
 
 ## T12.84 — `family_members` membership source repair
 

@@ -125,6 +125,25 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+        duplicate_channel_message = await conn.execute(
+            text(
+                "SELECT 1 FROM files GROUP BY channel_message_id "
+                "HAVING COUNT(*) > 1 LIMIT 1"
+            )
+        )
+        if duplicate_channel_message.first() is not None:
+            logger.error(
+                "Duplicate files.channel_message_id values detected; "
+                "skipping unique index creation"
+            )
+        else:
+            await conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "uq_files_channel_message_id ON files (channel_message_id)"
+                )
+            )
+
         # ── Postgres-only ALTERs (no-ops once already applied) ──────────────
         if is_postgres:
             # Widen login_codes.code VARCHAR(6) -> VARCHAR(10) for 8-digit codes.

@@ -4,9 +4,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import InterfaceError, OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app import bot
+from app import bot, models
 
 
 DB_WAKING_MESSAGE = (
@@ -106,8 +108,59 @@ class FailingCommitSession:
     def add(self, row):
         pass
 
+    def get_bind(self):
+        return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
+    async def execute(self, statement):
+        return EmptyResult()
+
     async def commit(self):
         raise OperationalError("INSERT", {}, OSError("database unavailable"))
+
+
+class EmptyResult:
+    def scalars(self):
+        return self
+
+    def first(self):
+        return None
+
+
+class FailingStatusMessage:
+    async def edit(self, text, **kwargs):
+        raise RuntimeError("status edit failed")
+
+
+@pytest.fixture
+def upload_database(monkeypatch, tmp_path):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'upload.db'}")
+    sessions = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async def setup():
+        async with engine.begin() as conn:
+            await conn.run_sync(models.Base.metadata.create_all)
+        async with sessions() as db:
+            db.add(
+                models.User(
+                    telegram_id=123456789,
+                    username="family",
+                    first_name="Family",
+                    role="admin",
+                )
+            )
+            db.add(
+                models.FamilyMember(
+                    telegram_id=123456789, is_owner=True, active=True
+                )
+            )
+            await db.commit()
+
+    asyncio.run(setup())
+    monkeypatch.setattr(bot, "async_session", sessions)
+    yield sessions
+    asyncio.run(engine.dispose())
 
 
 def _assert_status_button(markup):
@@ -172,6 +225,60 @@ def test_upload_db_failure_after_forward_compensates_and_adds_status_button(
     else:
         assert text.startswith("❌ **Database and Telegram error**")
         assert "An admin will need to manually clean up." in text
+
+
+def test_upload_status_edit_failure_keeps_committed_file(
+    upload_database, monkeypatch, caplog
+):
+    forward = AsyncMock(return_value=SimpleNamespace(id=88))
+    delete = AsyncMock(return_value=True)
+    monkeypatch.setattr(bot, "forward_to_storage_channel", forward)
+    monkeypatch.setattr(bot, "delete_from_storage_channel", delete)
+    message = FakeMessage()
+    message.status_message = FailingStatusMessage()
+
+    with caplog.at_level(logging.WARNING, logger="app.bot"):
+        asyncio.run(bot.handle_file(None, message))
+
+    forward.assert_awaited_once_with(message)
+    delete.assert_not_awaited()
+    assert message.replies[1][0].startswith("✅ File saved to the shared library")
+    assert "status notification failed" in caplog.text
+
+    async def saved_file_count():
+        async with upload_database() as db:
+            return len((await db.execute(select(models.File))).scalars().all())
+
+    assert asyncio.run(saved_file_count()) == 1
+
+
+def test_upload_commit_ack_failure_checks_persisted_row_before_compensating(
+    upload_database, monkeypatch
+):
+    real_commit = AsyncSession.commit
+
+    async def commit_then_raise(db):
+        await real_commit(db)
+        raise OperationalError("COMMIT", {}, OSError("commit acknowledgement lost"))
+
+    monkeypatch.setattr(AsyncSession, "commit", commit_then_raise)
+    forward = AsyncMock(return_value=SimpleNamespace(id=89))
+    delete = AsyncMock(return_value=True)
+    monkeypatch.setattr(bot, "forward_to_storage_channel", forward)
+    monkeypatch.setattr(bot, "delete_from_storage_channel", delete)
+    message = FakeMessage()
+
+    asyncio.run(bot.handle_file(None, message))
+
+    forward.assert_awaited_once_with(message)
+    delete.assert_not_awaited()
+    assert message.replies[1][0].startswith("✅ File saved to the shared library")
+
+    async def saved_file_count():
+        async with upload_database() as db:
+            return len((await db.execute(select(models.File))).scalars().all())
+
+    assert asyncio.run(saved_file_count()) == 1
 
 
 def test_upload_forward_failure_does_not_reference_unbound_forwarded(monkeypatch):

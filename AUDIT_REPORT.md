@@ -335,3 +335,22 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **CONFIRMED:** implementation and test changes are limited to the requested bot/API authorization paths and named tests; docs record the task and next task.
 - **VERIFY ON VPS:** confirm live membership addition/removal immediately affects bot commands and verify-code, and that DB sleep permits bootstrap-owner recovery with the wake message.
 - **NOT VERIFIED:** no live VPS request or production database interaction was performed for this task.
+
+## T12.83 — Safe upload compensation and unique `channel_message_id`
+
+### Upload and schema behavior
+
+- **CONFIRMED:** `handle_file()` sets `db_committed` only after the insert/lookup transaction commits and refreshes the row. The post-commit success-message construction and edit are isolated; notification failures are logged and followed by a plain reply, never Telegram deletion.
+- **CONFIRMED:** compensation is restricted to a non-`None` forwarded message while no row is known committed. After an attempted commit with uncertain outcome, the handler queries `File.channel_message_id`; a found row keeps the Telegram media and produces a saved-with-notification-failure reply. If outcome verification itself fails, the media is retained and the user is told to check `/myfiles` before retrying.
+- **CONFIRMED:** `File.channel_message_id` has a unique model index; `init_db()` creates the index idempotently for PostgreSQL and SQLite. A duplicate pre-check logs and skips index creation rather than failing boot. Uploads first reuse an existing row and use dialect-specific `ON CONFLICT DO NOTHING` for concurrent insert conflicts.
+- **CONFIRMED:** regressions cover status-edit failure after commit (row remains; delete is not called), a lost commit acknowledgement with a persisted row (lookup retains media), existing commit-failure compensation and T12.4 DB-wake tests, duplicate uploads (one row), idempotent index creation, and duplicate legacy rows (logged skip).
+
+### Fresh T12.83 gate evidence
+
+- **CONFIRMED:** Date 2026-11-20; branch `hearth/t12.83`; base latest `main` at `b7399be` (T12.82 merge).
+- **CONFIRMED:** Python 3.13.0; `.venv\Scripts\python -m pytest -q` — **167 passed, 61 warnings**; `.venv\Scripts\python -m compileall -q app` — **PASS**; `.venv\Scripts\python -m pip check` — **PASS, no broken requirements**.
+- **CONFIRMED:** focused upload/migration selection — **9 passed, 37 deselected, 2 warnings**.
+- **CONFIRMED:** Node 20.19.5 / npm 10.8.2; `npm ci` — **PASS** (447 packages); `npm run lint` — **PASS**; `npm run typecheck` — **PASS**; `npm test` — **2 files, 14 tests passed**; `npm run build` — **PASS**; `dist/_redirects` — **present**.
+- **CONFIRMED:** `npm ci` reported 24 dependency-tree advisories (1 low, 6 moderate, 15 high, 2 critical). No dependency upgrade or manifest change was made.
+- **VERIFY ON VPS:** exercise the index migration against Neon, inspect/report any legacy duplicate channel IDs, and verify upload/compensation behavior with live Telegram storage.
+- **NOT VERIFIED:** no production database, VPS, or live Telegram upload was used for this task.

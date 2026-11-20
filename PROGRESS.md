@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t12.82` (completed task branch; owner creates + merges PRs)
-* **Current Task:** `T12.83` — Family stream identity repair: file/device/owner binding
+* **Active Branch:** `hearth/t12.83` (completed task branch; owner creates + merges PRs)
+* **Current Task:** `T12.84` — `family_members` membership source repair
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -35,7 +35,7 @@
 * [x] **T12.80** — Post-incident docs re-baseline, F-01/F-02 re-opened, mobile exceptions authorized
 * [x] **T12.81** — Enforce family stream-token revocation (version claim, User.id binding, active membership)
 * [x] **T12.82** — `family_members.active` is the live bot/API family authorization authority
-* [ ] **T12.83** — Family stream identity repair: file/device/owner binding
+* [x] **T12.83** — Safe upload compensation and unique `channel_message_id`
 * [ ] **T12.84** — `family_members` membership source repair
 * [ ] **T12.85** — Verify-code role and membership hardening
 * [ ] **T12.86** — OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape
@@ -118,6 +118,7 @@
 * `2026-11-20 | T12.80 | gate passed: 149 backend tests; compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; MediaPlayer diff empty; docs-only`
 * `2026-11-20 | T12.81 | gate passed: pytest 157; compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; family revocation tests green`
 * `2026-11-20 | T12.82 | gate passed: pytest 162 (61 warnings); compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; family membership authorization tests green`
+* `2026-11-20 | T12.83 | gate passed: pytest 167 (61 warnings); compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; upload compensation and unique-index tests green`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 
