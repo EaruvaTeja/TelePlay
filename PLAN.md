@@ -25,7 +25,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | 5 | T15 | Owner (agent assists) | VPS+Pages deploy + acceptance evidence | `T15: Real-World Hardware Acceptance — evidence recorded` |
 | 6 | T16 | Owner (agent assists) | GO decision + 72h observation log | `T16: Launch & 72-hour observation — GO recorded` |
 
-### 2026-11-20 post-incident execution map (T12.81–T12.92)
+### 2026-11-20 post-incident execution map (T12.81–T12.92, including T12.90.1 follow-up)
 
 | Task | Scope |
 |---|---|
@@ -39,6 +39,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | T12.88 | Verify mobile/TV/PC parity and apply the final `MediaPlayer.tsx` freeze. |
 | T12.89 | Prove schema with `verify_schema.py`; fix deploy runbooks; validate proxy configuration; record provenance. |
 | T12.90 | Reliability hardening (A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default `confirm=False`, refresh-lifetime decision); replace the banner; run final clean-checkout gates and record freeze-candidate SHA. |
+| T12.90.1 | Restore transient auth-key retry behavior; quarantine a client only after 3 auth-key failures within 60 seconds, and clear the counter on successful lookup/chunk delivery. |
 | T12.91 | Stale bundle and VPS disk/RAM recovery; incident A-item tracking. |
 | T12.92 | Final freeze plus T0-R, T15-R, and T16-R gate reruns before handoff. |
 
@@ -384,6 +385,16 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 **VERIFY ON VPS:** unhealthy-client reporting and auth-key recovery, cross-account device-ID rejection, sync safety-abort behavior, and banner rendering after deployment. Keep T12.91, T0-R, T12.92, T15-R, and T16-R on hold; the owner tags `deploy-T12.90-rc` only after merge.
 
 **Commit:** `T12.90: Reliability hardening + final release gates & freeze evidence — gate passed`
+
+## T12.90.1 — Persistent auth-key failure threshold
+
+**Files:** `backend/app/telegram.py`, `backend/app/streaming.py`, `backend/tests/test_t12_90_reliability.py` (extend), `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+**Scope:** close Finding B by retaining per-client auth-key failure timestamps for a rolling 60-second window, pruning stale entries, and marking a client unhealthy only at three failures in that window. Earlier failures are warnings; successful message lookup, refresh lookup, or delivered chunks clear that client's counter. Keep the existing unhealthy-client reason, retry/backoff behavior, healthy-pool filtering, unanimous-gone handling, and session-file preservation unchanged.
+
+**Gate:** full backend `.venv\Scripts\python -m pytest -q`, `compileall -q app`, and `pip check`; frontend Node 20 `npm ci`, lint, typecheck, tests, build, and confirm `dist/_redirects`; `npm audit --omit=dev`; `git diff --check`; confirm no dependency changes and an empty `MediaPlayer.tsx` diff. VPS auth-key recovery remains **VERIFY ON VPS**.
+
+**Commit:** `T12.90.1: Auth-key unhealthy marking requires persistent failures (3/60s) — gate passed`
 
 ## T12.91 — Stale bundle and VPS resource recovery
 
