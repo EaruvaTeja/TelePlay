@@ -32,7 +32,7 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | T12.81 | Enforce family stream-token revocation with version claims and User.id identity. |
 | T12.82 | Make `family_members.active` the live bot/API family authorization authority. |
 | T12.83 | Make Telegram upload compensation commit-aware and file inserts idempotent by channel message ID. |
-| T12.84 | Re-opened F-02 source of truth: enforce `family_members` for family membership. |
+| T12.84 | Fail-safe Telegram reconciliation: dry-run sync and confirmed-gone-only cleanup. |
 | T12.85 | Re-opened F-02 verify-code: remove static-`AUTH_USERS`/mint-admin bypass. |
 | T12.86 | OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape. |
 | T12.87 | OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls/center play-pause. |
@@ -309,9 +309,17 @@ Track `db_committed` in `handle_file()` and set it only after commit and refresh
 **Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build; confirm `dist/_redirects`. Regress post-commit Telegram edit failure without deletion, preserve existing commit-failure compensation and T12.4 DB-wake tests, and verify duplicate upload/index migration behavior.
 **Commit:** `T12.83: Safe upload compensation + unique channel_message_id — gate passed`
 
-## T12.84 — `family_members` membership source repair
+## T12.84 — Fail-safe reconciliation
 
-**Scope:** reopen F-02 only and make family membership the single source of truth for media and family authorization. Static `AUTH_USERS` may authorize owner operations only where deliberately specified; it must not manufacture family membership or grant media identity.
+**Branch:** `hearth/t12.84` from latest `main`. **Files:** `backend/app/streaming.py`, `backend/app/routers/streaming.py`, `backend/app/bot.py`, `backend/tests/test_t12_84_reconciliation.py`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+Treat a Telegram message as gone only when every client lookup succeeds and every client reports it missing. A mixed missing/error result is unknown and raises `StreamUnavailable`. When stream preparation returns an empty context, make one authoritative `tg_client.get_messages()` confirmation before deleting the row; return `FILE_GONE` and invalidate caches only on a successful empty result, and return `STREAM_UNAVAILABLE` without deleting on lookup exceptions or a still-present message.
+
+Make `/sync` a read-only dry run that reports proposed row deletions. `/sync confirm` may delete only after all batch lookups complete successfully and the existing all-gone / 30% safety guard passes. Audit-log each proposed and committed deletion with both file ID and Telegram channel message ID. Keep `SYNC_ON_STARTUP` disabled in the production environment.
+
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build; confirm `dist/_redirects`. Add focused regressions for mixed gone/error, unanimous gone, authoritative confirmation and row preservation, dry-run, confirmation guard, and partial batch failure. Preserve all existing security tests.
+**VERIFY ON VPS:** confirm the deployed `SYNC_ON_STARTUP=false` environment and exercise `/sync` dry-run/confirm against the production Telegram channel only after owner approval.
+**Commit:** `T12.84: Fail-safe reconciliation — dry-run sync, confirmed-gone only — gate passed`
 
 ## T12.85 — Verify-code role and membership hardening
 

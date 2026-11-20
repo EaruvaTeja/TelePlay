@@ -129,8 +129,11 @@ async def _client_message(
         return hit[1]
 
     msg = await client.get_messages(chat_id, message_id)
-    if msg and not getattr(msg, "empty", False) and _media_of(msg):
-        _cache_put(key, msg)
+    if msg and not getattr(msg, "empty", False):
+        if _media_of(msg):
+            _cache_put(key, msg)
+        else:
+            _msg_cache.pop(key, None)
         return msg
 
     _msg_cache.pop(key, None)
@@ -152,8 +155,8 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
 
     Returns [(client_index, client, message), ...] best client first:
     a bot already connected to the file's DC needs no auth export at all.
-    Returns [] ONLY when a client looked successfully and the message is gone.
-    Raises StreamUnavailable when every client errored.
+    Returns [] only when every client lookup succeeds and reports the message
+    missing. Raises StreamUnavailable for errors or a live but unusable message.
     """
     chat_id = settings.telegram_storage_channel_id
     pool = list(clients)
@@ -166,12 +169,14 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
         idx = getattr(c, "pool_index", i)
         try:
             msg = await _client_message(c, idx, chat_id, message_id)
-            return idx, c, msg, ("ok" if msg is not None else "gone")
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.error("Bot %s: cannot fetch message %s: %s", idx, message_id, e)
             return idx, c, None, "error"
+        if msg is not None and not _media_of(msg):
+            return idx, c, msg, "unusable"
+        return idx, c, msg, ("ok" if msg is not None else "gone")
 
     got = await asyncio.gather(*(one(i, c) for i, c in enumerate(pool)))
 
@@ -191,7 +196,7 @@ async def prepare_stream(message_id: int) -> list[tuple[int, Any, Any]]:
             )
         return usable
 
-    if any(status == "gone" for _, _, _, status in got):
+    if got and all(status == "gone" for _, _, _, status in got):
         return []
 
     raise StreamUnavailable(f"No Telegram client could reach message {message_id}")

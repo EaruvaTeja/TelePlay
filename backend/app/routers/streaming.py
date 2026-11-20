@@ -332,6 +332,35 @@ async def _resolve_media(request: Request, file_id: int, download: int):
         )
 
     if not ctx:
+        try:
+            confirmation = await telegram.tg_client.get_messages(
+                telegram.settings.telegram_storage_channel_id,
+                meta.message_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "authoritative stream lookup failed file=%s message=%s: %s",
+                file_id,
+                meta.message_id,
+                e,
+            )
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "STREAM_UNAVAILABLE",
+                    "message": "Telegram client unavailable",
+                },
+            )
+
+        if confirmation and not getattr(confirmation, "empty", False):
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "STREAM_UNAVAILABLE",
+                    "message": "Telegram message exists but no streaming client is available",
+                },
+            )
+
         async with async_session() as db:
             f = (await db.execute(select(File).where(File.id == file_id))).scalar_one_or_none()
             if f:
