@@ -4,9 +4,9 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t13.11`
-* **Current Task:** `OWNER deploy step`
-* **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
+* **Active Branch:** `hearth/t13.12`
+* **Current Task:** `T13 phase closed — production observation (owner)`
+* **Current Production Release:** tag `deploy-T13.11-rc` at commit `e7f60d7141f1db0e0a0e306c6619314228d64326`. Historical T14 `v1.0-rc` note is retained below; it is not the current VPS deployment tag.
 
 ---
 
@@ -58,6 +58,7 @@
 * [x] **T13.9** — Issue 6a: household playback count endpoint
 * [x] **T13.10** — Issue 6b: home live-devices chip, popup text, and flow verification
 * [x] **T13.11** — Final freeze gates, RC candidate, and deploy handoff (docs only)
+* [x] **T13.12** — Deploy acceptance evidence and T13 phase closeout (docs only)
 * [ ] **T12.91** — Stale bundle and VPS resource recovery — ON HOLD
 * [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R) — ON HOLD
 * [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD
@@ -73,9 +74,10 @@ The bare **T13 Deployment Kit** is already complete; this phase is the T13.x seq
 | Player controls | T13.2 → T13.4 → T13.6 → T13.7 → T13.8 → T13.8.1 → T13.8.2 |
 | Playback count | T13.9 → T13.10 |
 | Independent player changes | T13.3 and T13.5 are independent of the player-controls chain |
-| Phase closeout | T13.11 follows completion of T13.2–T13.10 |
+| Phase closeout | T13.11 follows completion of T13.2–T13.10; T13.12 records deployment and closes the phase |
 
-T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
+**T13 phase status — CONFIRMED (owner executed): COMPLETE AND DEPLOYED** as
+`deploy-T13.11-rc`. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
 
 ---
 
@@ -88,6 +90,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * **Finding B — CONFIRMED CLOSED IN CODE by T12.90.1:** per-client auth-key failures must reach 3 within 60 seconds before quarantine; successful lookup/chunk delivery clears the counter. **VERIFY ON VPS:** live transient recovery and the persistent-failure operator workflow.
 * **T12.90.2 freeze candidate — CONFIRMED:** clean-checkout snapshot SHA `81c41f02c40b60620a9f5c84484f53177af99c72`, tree `fbfe33b3f77f0a2a7980b65e7c0c8eb3d530f5ba`, based on latest `main` `f1f656375f88990332fe3078e70a8e893860085d`; supersedes `e9f1704`. Gate evidence append changed documentation only; tested implementation/tests remain identical. **VERIFY ON DEVICE:** iPhone pseudo-landscape seek/volume drags, orientation exit, Android native lock.
 * **T13.11 RC code candidate — CONFIRMED:** clean-checkout gates ran against `main` commit `c7d82f53f28fb823c79fb047aec4794fd63a84ba`, tree `ca77f9ac70da58a4fa152e8a27d24268be3005f6`; 230 backend tests and 88 frontend tests passed. The owner tags the merged T13.11 commit on `main`; this candidate is not the final tag target if merge creates a different commit.
+* **Current Production Release — CONFIRMED (owner executed):** annotated tag `deploy-T13.11-rc`, tag object `38e970d1e983d992db041551dd1711b340671116`, peels to `e7f60d7141f1db0e0a0e306c6619314228d64326`; deployment success logged at `2026-11-20T17:03:06Z`. Rollback anchor: `deploy-T12.90.2-rc` at `a910a72cb29e975b93febc7eb7d2783c952305d`.
 * **ON HOLD:** T12.91, T0-R, T12.92, T15-R, and T16-R; deployment/release remains NO-GO pending owner authorization and required VPS evidence.
 * **F-01 — CONFIRMED CLOSED IN CODE by T12.81:** family stream version, `User.id` identity, and active membership checks are enforced before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs.
 * **F-02 — CONFIRMED CLOSED IN CODE by T12.82:** `family_members.active` governs bot/API authorization and verify-code for existing users; `AUTH_USERS` is only a DB-connectivity bootstrap fallback. **VERIFY ON VPS:** live membership add/remove, verify-code, and DB-wake recovery.
@@ -99,11 +102,11 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * **T12.4 gates:** pytest 143 + npm lint/typecheck/test/build green on Python 3.13.0 / Node 20.19.5; deployment paused.
 * **T12.4.1 gates:** production npm advisories 3 → 0; npm lint/typecheck/test/build and backend pytest/compileall/pip check green on Node 20.19.5 / Python 3.13.0.
 * **T12.5 gates:** pytest 143 + compileall + pip check green on Python 3.13.0; Pyrogram client configured for IPv6.
-* **Release SHA:** deployment paused; re-freeze deferred until T12.5 merges and owner smoke-tests pass; owner then re-points tag `v1.0-rc`, and VPS must checkout the new SHA before deploy.
+* **Release SHA:** current production is `deploy-T13.11-rc` at `e7f60d7`; the earlier T14 `v1.0-rc` note is historical and is not the deployed VPS tag.
 * **VPS:** NeoHeberg LXC, Debian 13 trixie, 512MB RAM + 512MB swap, ~3.1GB free disk; Python 3.13 native (explicit decision 2026-11-19).
 * **Neon backup verified + off-host:** PENDING (T0)
 * **Session backup:** PENDING (T0; after first boot if fresh install)
-* **RELEASE_SHA (frozen at T14):** TBD
+* **Historical v1.0-rc note:** retained from the T14 launch plan; current VPS deployment is recorded above.
 * **Pages URL / API host:** TBD / TBD
 * **GO / NO-GO:** **NO-GO** (flip only per PLAN T16 criteria, with recorded evidence)
 
@@ -176,6 +179,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * `2026-11-20 | T13.8.2 | gate passed: Node 20.20.2/npm 10.8.2 npm ci; focused 64 and full 78 frontend tests (baseline unchanged); lint 0 warnings/typecheck/build (1,529 modules); dist/_redirects present; Current Task remains T13.10`
 * `2026-11-20 | T13.10 | gate passed: pytest 230 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 npm ci; lint 0 warnings/typecheck; 88 frontend tests; build (1,530 modules) and dist/_redirects; production audit 0`
 * `2026-11-20 | T13.11 | clean-checkout gates passed: 230 backend tests; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 88 frontend tests; build (1,530 modules); dist/_redirects; production audit 0; docs-only freeze and owner deploy handoff`
+* `2026-11-20 | T13.12 | local gates passed: 230 backend tests and 88 frontend tests; owner deploy evidence recorded; T13 closed and production smoke checks deferred`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

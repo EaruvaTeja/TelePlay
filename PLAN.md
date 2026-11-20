@@ -413,7 +413,7 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T13 phase — owner-authorized UX and household count tasks
 
-The bare **T13 Deployment Kit & Runbooks** task is already complete. This phase consists of T13.1–T13.11 sub-tasks plus the owner-authorized T13.8.1 and T13.8.2 follow-ups. Cloudflare Pages publishes on merge to `main`, while the VPS remains on `deploy-T12.90.2-rc` until the owner deploys; every web change must remain compatible with the old server. The owner intends to merge T13.2–T13.8 in one sitting because the temporary removal of the bottom-bar volume controls precedes their replacements. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
+The bare **T13 Deployment Kit & Runbooks** task is complete. **T13 phase status — CONFIRMED (owner executed): COMPLETE AND DEPLOYED** as `deploy-T13.11-rc` at commit `e7f60d7141f1db0e0a0e306c6619314228d64326`. The phase's T13.1–T13.12 documentation and implementation tasks are closed; the T13.11 device/TV/VPS acceptance matrix remains deferred to owner production observation. Cloudflare Pages publishes from `main`, and VPS releases are pinned to tags. T12.91, T12.92, T0, T15, and T16 remain **ON HOLD**.
 
 **T13 guardrails:** no new dependencies or `backdrop-filter`; preserve Chrome 53/old-Tizen compatibility and the existing old-server contract. Do not change the playback limiter, auth-before-cache/stream-token/revocation logic, bot, database schema, deployment kit, protected API/store exports, or `hearth_player_prefs`/`hearth_device_id` keys. `MediaPlayer.tsx` may change only inside the active task's Exception #5 sub-scope. Do not push to main, create a tag, or create/merge a PR.
 
@@ -616,6 +616,38 @@ Document counter semantics: limiter slot-holders include `prewarmPlayback` after
 8. Consolidate every remaining VERIFY ON DEVICE / TV / VPS item from T13.2–T13.10 in `AUDIT_REPORT.md`.
 
 **Commit:** `T13.11: T13 final freeze gates + RC candidate handoff — gate passed`
+
+### T13.12 — Deploy acceptance evidence and T13 phase closeout (docs only)
+
+**Sub-scope:** none. Exception #5 remains closed and `MediaPlayer.tsx` frozen.
+**Files (only):** `HANDOFF.md`, `PLAN.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`.
+
+**Scope:** Record the owner's T13.11 release identity, local pre-deploy checks,
+VPS pre-flight, deployment transport and restart evidence, accepted schema
+drift, and the two pre-existing reliability findings. Correct the HANDOFF
+transport instructions for a VPS checkout with no configured Git remote and
+document the observed 405-before/401-after count probe. Mark every item in the
+T13.11 consolidated device/TV/VPS list as deferred to production observation.
+Do not change source, tests, dependencies, deploy files, or configuration; do
+not perform any server, database, or Telegram action.
+
+**Gate:** run the full backend gates on Python 3.13 (`compileall -q app`,
+`pip check`, full `pytest`) and frontend gates on Node 20 (`npm ci`, lint with
+zero warnings, typecheck, `vitest run`, build, confirm `dist/_redirects`, and
+`npm audit --omit=dev`). Counts must match T13.11: 230 backend and 88 frontend
+tests; no tests are added or deleted. Confirm the diff contains only the four
+authorized docs and `MediaPlayer.tsx` is unchanged.
+
+**Commit:** `T13.12: Deploy acceptance evidence + T13 phase closeout — docs only`
+
+### Tracked follow-ups (not scheduled)
+
+- Accepted legacy `files.public_hash` column/index drift: remove only after a
+  verified off-host backup (T0 remains ON HOLD) and explicit owner approval.
+- Investigate DB `QueuePool` sizing/exhaustion using the preserved pre-deploy
+  log; do not change pool settings without a separate task and evidence.
+- Decide whether dedicated `MediaFastForward` / `MediaRewind` keys should
+  re-arm the controls auto-hide timer; behavior remains unchanged meanwhile.
 
 ## T12.91 — Stale bundle and VPS resource recovery
 

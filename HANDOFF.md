@@ -6,7 +6,7 @@ This v2 handoff supersedes the T12-era handoff for ALL remaining work.
 * **Repository:** `EaruvaTeja/TelePlay`
 * **Audited code baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main, T1–T12 merged via PR #16; full static audit performed 2026-11-19)
 * **Work branches:** `hearth/<task-id>` cut from latest `main` (e.g. `hearth/t12.1`, `hearth/t13`, `hearth/t14`)
-* **Release SHA:** frozen at the end of **T14** (tag `v1.0-rc`). Deploy ONLY that SHA — never a moving branch.
+* **Current production release:** tag `deploy-T13.11-rc` at commit `e7f60d7141f1db0e0a0e306c6619314228d64326` (owner-deployed). The earlier **T14** `v1.0-rc` note is historical and is not the current VPS tag; deploy only the pinned release tag confirmed in the owner handoff below.
 * **Docs-only owner commits** may land on main after the baseline; they do not invalidate the code audit. T14 re-runs every gate at the final SHA.
 * **Fallback if launch day runs out:** owner-only soft launch (no family invites, no irreplaceable media). NEVER skip a P0 gate to hit the date.
 
@@ -159,56 +159,96 @@ Auth before any cache/byte on every GET/HEAD/Range · stream tokens bound to fil
 
 Keep previous SHA available; stop service before switching code; never roll back across incompatible schema; env + sessions live OUTSIDE the checkout so code rollback can't delete them; never drop tables to "fix" schema — restore the verified Neon dump instead (record time/cause; post-backup uploads may be lost); restore sessions only to the single instance with correct ownership/modes.
 
-## T13.11 Final Freeze and OWNER Deploy Handoff
+## T13.11 OWNER Deploy Handoff — COMPLETE
 
-The T13.11 clean-checkout gates passed against `main` commit
-`c7d82f53f28fb823c79fb047aec4794fd63a84ba`, tree
-`ca77f9ac70da58a4fa152e8a27d24268be3005f6`. The final merged T13.11 commit may
-have a different SHA because the owner creates/merges the PR. The owner tags
-that merged commit on `main`; the agent does not create or push tags.
+**CONFIRMED — owner executed:** T13 phase merged as PRs #40–#52. Production
+release is annotated tag `deploy-T13.11-rc`, tag object
+`38e970d1e983d992db041551dd1711b340671116`, peels to commit
+`e7f60d7141f1db0e0a0e306c6619314228d64326` (merge PR #52). Deployment completed
+2026-11-20 at `17:03:06Z`; the service restart began at `16:51:05Z`. Previous
+release/rollback anchor is annotated tag `deploy-T12.90.2-rc`, tag object
+`3d104a39a2109b78ea91fc920a4c07b813a5f7ee`, peels to
+`a910a72cb29e975b93febc7eb7d2783c952305d`.
 
-1. After merging the reviewed T13.11 PR, the owner runs:
+**CONFIRMED — owner executed:** Exception #5 remains CLOSED and
+`MediaPlayer.tsx` remains frozen. T13.12 opens no new exception. The T13.11
+device/TV/VPS acceptance matrix is **DEFERRED** to production observation.
 
-   ```bash
-   git checkout main && git pull
-   git rev-parse HEAD
-   git tag deploy-T13.11-rc
-   git push origin deploy-T13.11-rc
-   ```
+### VPS checkout transport
 
-   Verify `HEAD` is the merged T13.11 commit before creating the tag.
-2. Confirm `teleplay.pages.dev` serves the final build and hard-refresh it.
-3. On the VPS, follow [deploy/README.md](deploy/README.md) section 4. Update the
-   existing checkout and validate service readiness:
+**CONFIRMED — owner executed:** `git remote -v` on `/opt/hearth/app` is empty.
+Do not use `git fetch --tags` without a URL, and do not add a remote. The host
+has NAT64 GitHub access at this deployment; if GitHub is reachable, fetch the
+tag by explicit URL:
 
-   ```bash
-   sudo -u hearth git -C /opt/hearth/app fetch --tags
-   sudo -u hearth git -C /opt/hearth/app checkout --detach deploy-T13.11-rc
-   sudo systemctl restart hearth
-   curl -fsS http://127.0.0.1:8000/health/ready
-   sudo journalctl -u hearth -n 50 --no-pager
-   ```
+```bash
+sudo -u hearth git -C /opt/hearth/app fetch --no-tags https://github.com/EaruvaTeja/TelePlay.git refs/tags/deploy-T13.11-rc:refs/tags/deploy-T13.11-rc
+```
 
-   Confirm bot handlers are registered in the journal. Make an authenticated
-   `GET /api/playback/count` request; expect `{"active":N,"limit":2}`. No
-   dependency reinstall is required.
-4. Owner smoke matrix:
-   - Phone: portrait launch with every icon visible; Android and iPhone
-     fullscreen; left/right drag indicator only while dragging; lock/handle,
-     hold-to-unlock progress, drag-to-pause/play, unlock, and lock notices.
-   - Phone, PC, and TV: controls hide after 3 seconds; verify the glass play
-     button on dark and bright frames.
-   - TV: D-pad reaches brightness and volume clusters; held OK ramps; old keys
-     remain unchanged.
-   - Playback limit: two devices playing, third blocked with “Maximum watch
-     devices reached”; chip 1 is green and 2 is orange; stopping or closing a
-     player frees its slot within about 75 seconds.
-5. Rollback is schema/dependency safe: on the VPS check out
-   `deploy-T12.90.2-rc` and restart `hearth`. The old server is compatible with
-   the new web client (the chip hides on 404/405); Cloudflare Pages can be
-   rolled back to its previous deployment.
+If GitHub is unreachable, transfer a verified incremental bundle to the VPS.
+The prepared `hearth-t13.11-rc.bundle` was 654 KB, passed `git bundle verify`,
+and required the existing `a910a72` prerequisite; it was not needed for this
+deployment. Verify and fetch the tag directly from the bundle path (never add
+the bundle as a remote):
 
-`PROGRESS.md` Current Task: **OWNER deploy step**.
+```bash
+sudo -u hearth git -C /opt/hearth/app bundle verify /path/to/hearth-t13.11-rc.bundle
+sudo -u hearth git -C /opt/hearth/app fetch --no-tags /path/to/hearth-t13.11-rc.bundle refs/tags/deploy-T13.11-rc:refs/tags/deploy-T13.11-rc
+```
+
+Then verify the tag peels to the approved commit and check it out:
+
+```bash
+sudo -u hearth git -C /opt/hearth/app rev-parse 'deploy-T13.11-rc^{commit}'
+sudo -u hearth git -C /opt/hearth/app checkout --detach deploy-T13.11-rc
+```
+
+The prior `/opt/hearth/hearth-t12.90.2.bundle` remains an offline rollback
+source. Do not remove or use it as a Git remote.
+
+### Deployment result — CONFIRMED — owner executed
+
+- The VPS pre-deploy count probe returned **405** on the old server because its
+  `DELETE /playback/{device_id}` route pattern matches the path with a
+  disallowed method. After deployment, an unauthenticated count request
+  returned **401**, as expected for the new authenticated route. The home chip
+  treats both 404 and 405 as unavailable on the old server. An authenticated
+  guest/family count smoke remains deferred below.
+- Preflight: `/` disk 4.9G total, 2.1G used, 2.6G available (44%); RAM 512 MB
+  total, 389 MB available; swap 51/512 MB. Unit runs one worker on loopback
+  `127.0.0.1:8000`, with `MemoryHigh=350M`, `MemoryMax=400M`,
+  `ProtectSystem=strict`, and the session directory as the writable path.
+- Before checkout, VPS HEAD was `a910a72` (`deploy-T12.90.2-rc`), service was
+  active, and `/health/ready` returned 200. After checkout, HEAD was
+  `e7f60d7` (`deploy-T13.11-rc`) and the worktree was clean.
+- Requirements and database models were unchanged between release tags; no
+  pip install, migration, or web build was performed on the VPS. `pip check`
+  reported “No broken requirements found.”
+- After the restart, readiness was `000` for about 28 seconds while lifespan
+  startup ran, then returned 200 at about 32 seconds; the count probe returned
+  401. Health body was
+  `{"status":"ready","checks":{"database":true,"telegram":true}}`.
+- Journal reported a clean shutdown, new PID 61197, 17 bot handlers
+  registered, database initialized, Telegram main_bot started, startup sync
+  disabled, application startup complete, and Uvicorn listening on loopback.
+  The only post-restart warning was the owner's unauthenticated count probe
+  (“Missing authentication token”); no traceback appeared under the new PID.
+- Post-deploy `MemoryCurrent` was 120426496 bytes (~115 MiB), with 372 MB
+  available. `/var/log/hearth-deploys.log` recorded ATTEMPT
+  `2026-11-20T16:50:02Z` and SUCCESS `2026-11-20T17:03:06Z`.
+- **CONFIRMED — owner executed:** `teleplay.pages.dev` was published from
+  `main`; production acceptance UI smoke is not claimed complete.
+
+### Rollback and phase state
+
+Rollback anchor is `deploy-T12.90.2-rc` at `a910a72`. The T13 release introduced
+no dependency or database-schema changes; the previous web deployment can
+also be restored from Cloudflare Pages. The complete device/TV/VPS smoke
+matrix is **DEFERRED** until owner production observation; every item in the
+T13.11 consolidated verification list remains untested and is not marked
+CONFIRMED or PASS.
+
+`PROGRESS.md` Current Task: **T13 phase closed — production observation (owner)**.
 
 ---
 

@@ -1004,34 +1004,145 @@ Reviewed the cumulative diff from `a910a72cb29e975b93febc7eb7d2783c952305d` to t
 - **CONFIRMED:** The cumulative `web/public/logo.png` change is the previously approved T12.90 owner-supplied banner; it is not a T13.11 change. Other code/API deltas are from the already completed T13.9/T13.10 scope. No PR was created and no tag was pushed.
 - **CONFIRMED by source/tests:** The T13.10 hook treats 404/405 as feature-unavailable and the chip renders nothing, preserving compatibility with the old server. Actual old-server behavior remains **VERIFY ON DEVICE / VERIFY ON VPS**.
 
-### Consolidated remaining verification — owner
+### Consolidated remaining verification — DEFERRED
 
-**VERIFY ON DEVICE (phone, PC, tablet)**
+**DEFERRED — owner will perform every listed device, TV, and VPS acceptance
+item during production observation. None of the following smoke items is
+marked CONFIRMED or PASS.**
 
-- **T13.2–T13.3:** On phone, verify the removed bottom-bar volume controls leave a usable layout and controls hide after 3 seconds while playing without breaking paused/settings/dialog/scrubbing behavior. On PC, verify the same timeout and unchanged layout.
-- **T13.4:** On phone, verify portrait launch, controls fit and are tappable at 320px, natural rotation, Android/iPhone fullscreen entry/exit, and PiP on supported phones only. On PC, verify the existing layout/fullscreen behavior.
-- **T13.5:** Check center Play/Pause readability and focus treatment over both dark and bright frames; verify the phone playing-state Pause and PC paused-center appearance.
-- **T13.6:** On phone, test left/right drag behavior, 10% brightness floor, volume mute/unmute at zero, indicator fade/placement, tap suppression and Scrubber/control exclusions, portrait/physical landscape/fullscreen, and the iPhone device-volume hint/fallback.
-- **T13.7:** Verify PC mouse behavior and tablet controls/touch behavior.
-- **T13.8:** Verify phone lock placement, handle, tap/drag thresholds, pause/play while locked, auto-hide/permanent-paused handle, brightness/volume blocking, error/dialog unlock, and close/reopen reset.
-- **T13.8.1:** Verify portrait/landscape/fullscreen short-press guidance, one-second hold ring/unlock, right-drag feedback/threshold pulse, pause/play notice, handle auto-hide, and cancellation/reset.
-- **T13.8.2:** Verify the lock icon follows actual playing/paused state, stationary hold keeps the icon and ring, valid right drag moves the dot to its 32px threshold and toggles playback, invalid/left/vertical drags do not toggle, cancellation resets, and notices remain readable without clipping. Recheck keyboard unlock and phone brightness/volume gestures.
-- **T13.10:** Verify the chip hides on an old server; on the new server it shows phone `N/limit` using the server limit, with 1 green and 2 orange. With two devices playing, verify a third attempt shows the limit dialog, admin Stop frees a slot, and closing a player releases it or it expires within about 75 seconds.
+**DEFERRED — VERIFY ON DEVICE (phone, PC, tablet)**
 
-**VERIFY ON TV**
+- **DEFERRED — T13.2–T13.3:** On phone, verify the removed bottom-bar volume controls leave a usable layout and controls hide after 3 seconds while playing without breaking paused/settings/dialog/scrubbing behavior. On PC, verify the same timeout and unchanged layout.
+- **DEFERRED — T13.4:** On phone, verify portrait launch, controls fit and are tappable at 320px, natural rotation, Android/iPhone fullscreen entry/exit, and PiP on supported phones only. On PC, verify the existing layout/fullscreen behavior.
+- **DEFERRED — T13.5:** Check center Play/Pause readability and focus treatment over both dark and bright frames; verify the phone playing-state Pause and PC paused-center appearance.
+- **DEFERRED — T13.6:** On phone, test left/right drag behavior, 10% brightness floor, volume mute/unmute at zero, indicator fade/placement, tap suppression and Scrubber/control exclusions, portrait/physical landscape/fullscreen, and the iPhone device-volume hint/fallback.
+- **DEFERRED — T13.7:** Verify PC mouse behavior and tablet controls/touch behavior.
+- **DEFERRED — T13.8:** Verify phone lock placement, handle, tap/drag thresholds, pause/play while locked, auto-hide/permanent-paused handle, brightness/volume blocking, error/dialog unlock, and close/reopen reset.
+- **DEFERRED — T13.8.1:** Verify portrait/landscape/fullscreen short-press guidance, one-second hold ring/unlock, right-drag feedback/threshold pulse, pause/play notice, handle auto-hide, and cancellation/reset.
+- **DEFERRED — T13.8.2:** Verify the lock icon follows actual playing/paused state, stationary hold keeps the icon and ring, valid right drag moves the dot to its 32px threshold and toggles playback, invalid/left/vertical drags do not toggle, cancellation resets, and notices remain readable without clipping. Recheck keyboard unlock and phone brightness/volume gestures.
+- **DEFERRED — T13.10:** Verify the chip hides on an old server; on the new server it shows phone `N/limit` using the server limit, with 1 green and 2 orange. With two devices playing, verify a third attempt shows the limit dialog, admin Stop frees a slot, and closing a player releases it or it expires within about 75 seconds.
 
-- **T13.2–T13.3:** Confirm remaining bottom-bar remote navigation has no dead stop, top-bar Mute remains available, and 3-second auto-hide is usable with D-pad navigation. Decide whether dedicated MediaFastForward/MediaRewind keys should re-arm the timer; that special-key behavior predates T13.3 and was left unchanged.
-- **T13.4–T13.6:** Confirm TV layout/focus and existing controls remain unchanged; assess the glass center button's legibility and focus ring; confirm brightness/volume gestures did not affect TV behavior.
-- **T13.7:** Verify Samsung Tizen key delivery, focus rings, side-cluster reachability, both bar-end routes, held-OK ramping, and side-button indicator behavior.
-- **T13.8–T13.8.2:** Confirm phone lock UX changes are absent and existing TV controls/key mapping remain unchanged.
-- **T13.10:** Verify desktop “N watching” chip text/colors without changing remote focus order; exercise the third-device dialog and admin Stop.
+**DEFERRED — VERIFY ON TV**
 
-**VERIFY ON VPS**
+- **DEFERRED — T13.2–T13.3:** Confirm remaining bottom-bar remote navigation has no dead stop, top-bar Mute remains available, and 3-second auto-hide is usable with D-pad navigation. Decide whether dedicated MediaFastForward/MediaRewind keys should re-arm the timer; that special-key behavior predates T13.3 and was left unchanged.
+- **DEFERRED — T13.4–T13.6:** Confirm TV layout/focus and existing controls remain unchanged; assess the glass center button's legibility and focus ring; confirm brightness/volume gestures did not affect TV behavior.
+- **DEFERRED — T13.7:** Verify Samsung Tizen key delivery, focus rings, side-cluster reachability, both bar-end routes, held-OK ramping, and side-button indicator behavior.
+- **DEFERRED — T13.8–T13.8.2:** Confirm phone lock UX changes are absent and existing TV controls/key mapping remain unchanged.
+- **DEFERRED — T13.10:** Verify desktop “N watching” chip text/colors without changing remote focus order; exercise the third-device dialog and admin Stop.
 
-- **T13.9:** After deployment, verify authenticated guest and family `GET /api/playback/count` responses contain only `{active, limit}`; unauthenticated access returns 401.
-- **T13.10:** Before deployment, verify old-server 404/405 keeps the chip hidden without UI/console errors. After deployment, verify the count endpoint response and device-limit flow.
-- **T13.2–T13.8.2:** No VPS checks were required for these web-only client scopes.
+**DEFERRED — VERIFY ON VPS**
+
+- **DEFERRED — T13.9:** Verify authenticated guest and family `GET /api/playback/count` responses contain only `{active, limit}`; unauthenticated access returns 401.
+- **DEFERRED — T13.10:** Verify old-server 404/405 keeps the chip hidden without UI/console errors. After deployment, verify the count endpoint response and device-limit flow.
+- **DEFERRED:** No VPS checks were required for the web-only T13.2–T13.8.2 scopes.
 
 ### Deviations and findings
 
 - **CONFIRMED:** No deviations or out-of-scope cumulative MediaPlayer hunks found. Tests deleted in T13.11: none. Physical device, TV, and VPS verifications remain open as listed above.
+
+## T13.12 — Deploy acceptance evidence and T13 phase closeout
+
+### Release identity — CONFIRMED, owner executed
+
+- T13 merged as PRs #40–#52. Production is on annotated tag
+  `deploy-T13.11-rc`, tag object
+  `38e970d1e983d992db041551dd1711b340671116`, peeling to commit
+  `e7f60d7141f1db0e0a0e306c6619314228d64326` (PR #52).
+- Deployment restart began at `2026-11-20T16:51:05Z`; the deploy log recorded
+  success at `2026-11-20T17:03:06Z`. The previous release and rollback anchor
+  is annotated tag `deploy-T12.90.2-rc`, tag object
+  `3d104a39a2109b78ea91fc920a4c07b813a5f7ee`, peeling to
+  `a910a72cb29e975b93febc7eb7d2783c952305d`.
+- Owner reports Cloudflare Pages published from `main`. T13 is closed and
+  deployed. Exception #5 remains closed; `MediaPlayer.tsx` stays frozen.
+
+### Local release checks — CONFIRMED, agent executed
+
+- On the release commit `e7f60d7141f1db0e0a0e306c6619314228d64326`, Python
+  **3.13.0** `python -m compileall -q app` passed, `pip check` reported no
+  broken requirements, and full `pytest` passed **230 tests, 61 warnings**.
+- Node **20.20.2** / npm **11.20.0**: `npm ci` passed and installed 447
+  packages (448 audited); the full dependency tree reported 24 advisories
+  (1 low, 6 moderate, 15 high, 2 critical). npm also warned that install
+  scripts for `core-js` and `esbuild` were not covered by its allow-scripts
+  policy. `npm run lint` passed with **0 warnings**; typecheck passed;
+  Vitest passed **3 files / 88 tests**. These meet the T13.11 expected totals
+  (230 backend, 88 frontend); no test was added or deleted in T13.12.
+- **CONFIRMED:** `npm run build` passed with **1,530 modules transformed**;
+  `dist/_redirects` is present; `npm audit --omit=dev` reported **0
+  vulnerabilities**.
+- **CONFIRMED:** The local T13.12 worktree diff is limited to the four
+  authorized docs. `web/src/components/MediaPlayer.tsx` has no diff.
+  `git diff --check` passed. The T13.11 cumulative MediaPlayer review and
+  hunk-to-sub-scope table above remain the release review; no T13.12 runtime
+  code was changed.
+
+### VPS pre-flight and transport — CONFIRMED, owner executed
+
+- Before checkout, VPS HEAD was `a910a72` (`deploy-T12.90.2-rc`), the service
+  was active, and `/health/ready` returned 200. `/opt/hearth/app` had no
+  configured Git remote (`git remote -v` was empty); the VPS did have NAT64
+  GitHub access. The old-server unauthenticated `GET /api/playback/count`
+  returned **405** because the `DELETE /playback/{device_id}` route pattern
+  matches the path but rejects GET.
+- Owner fetched the approved tag using the explicit HTTPS GitHub URL; no
+  remote was added. A 654 KB incremental bundle was also prepared and passed
+  `git bundle verify` against its existing `a910a72` prerequisite, but was not
+  used. The existing `/opt/hearth/hearth-t12.90.2.bundle` remains the offline
+  rollback source.
+- Preflight resources were `/`: 4.9 GB total, 2.1 GB used, 2.6 GB available
+  (44%); RAM: 512 MB total / 389 MB available; swap: 51/512 MB. The systemd
+  unit runs one loopback worker at `127.0.0.1:8000`, with `MemoryHigh=350M`,
+  `MemoryMax=400M`, `ProtectSystem=strict`, and the session directory
+  writable.
+
+### Deployment observations — CONFIRMED, owner executed
+
+- After checkout, VPS HEAD was `e7f60d7` (`deploy-T13.11-rc`) with a clean
+  worktree. No dependency installation, database migration, or web build was
+  performed. Requirements and database models were unchanged between release
+  tags; `pip check` reported “No broken requirements found.”
+- After restart, readiness returned `000` for about 28 seconds while startup
+  ran and then returned 200 at about 32 seconds. An unauthenticated count
+  probe returned **401** (“Missing authentication token”), as expected. This
+  is not evidence of an authenticated guest/family payload check; that check
+  remains deferred.
+- Readiness body was
+  `{"status":"ready","checks":{"database":true,"telegram":true}}`. The journal
+  recorded clean shutdown, new PID 61197, 17 registered bot handlers,
+  database initialization, Telegram `main_bot` started, startup sync disabled,
+  application startup complete, and Uvicorn listening on loopback. No
+  traceback appeared under the new PID; the only post-restart warning was
+  the owner’s unauthenticated count probe.
+- Post-restart memory was 120426496 bytes (~115 MiB), with 372 MB available.
+  `/var/log/hearth-deploys.log` recorded ATTEMPT
+  `2026-11-20T16:50:02Z` and SUCCESS `2026-11-20T17:03:06Z`.
+
+### Accepted findings and tracked follow-ups
+
+- **CONFIRMED, owner accepted; no remediation performed:** legacy
+  `files.public_hash` column/index drift. The column is nullable; two rows
+  exist and neither has a non-null value. No DDL was run. Cleanup remains on
+  hold until a verified off-host backup and explicit owner authorization.
+- **CONFIRMED, owner accepted; no remediation performed:** QueuePool exhaustion
+  warning at `16:05:55Z` from old PID 52545. It self-recovered; investigate
+  pool sizing separately using the preserved pre-deploy log.
+- **CONFIRMED from prior T13.3/T13.7 evidence; unchanged:** dedicated
+  `MediaFastForward` / `MediaRewind` keys do not re-arm controls auto-hide.
+  No player code changed; the owner will decide whether this behavior needs a
+  separate task.
+- These are tracked observations, not T13.12 fixes. The agent performed no
+  production server, database, or Telegram action.
+
+### Deferred acceptance and phase status
+
+- **DEFERRED:** Every device, TV, and VPS checklist item in the T13.11
+  consolidated list above remains for owner production observation. The
+  owner’s deployment/readiness evidence does not close that smoke matrix; no
+  checklist row is marked CONFIRMED or PASS.
+- **CONFIRMED:** `PLAN.md` records three unscheduled follow-ups: authorized
+  `public_hash` cleanup after backup, QueuePool sizing investigation, and a
+  decision about dedicated media-key auto-hide behavior. T12.91, T12.92, T0,
+  T15, and T16 remain on hold.
+- **CONFIRMED:** T13.12 changes documentation only; tests deleted: none.
+  No PR or tag was created by the agent.
