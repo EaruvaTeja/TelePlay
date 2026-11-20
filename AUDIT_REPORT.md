@@ -252,13 +252,14 @@ Owner reports that some videos do not play even though backend logs show HTTP 20
 - Stale bundle: `/opt/hearth/hearth-v1.0-rc.bundle` remains at `7629f0a`.
 - VPS disk: 75% (3.0 GB / 4.0 GB).
 - VPS RAM: 210 MB / 512 MB.
-- Incident items A1/A2/A4/A5/A6/A7 are tracked by T12.89 and T12.91; resolution remains pending live VPS evidence.
+- At T12.80, incident items A1/A2/A4/A5/A6/A7 were tracked by T12.89 and T12.91. The corrected current assignments are documented in T12.85 below; resolution remains pending live VPS evidence.
 
-### Re-opened F-01/F-02 — CONFIRMED from source evidence
+### T12.80 historical re-opened F-01/F-02 state — CONFIRMED from source evidence
 
 - F-01: `create_stream_token()` emits no family `ver`; `/playback/start` passes `uid=User.id` while `_auth_stream` queries `User.telegram_id`.
 - F-02: `check_auth()` uses static `AUTH_USERS`; `verify-code` mints `role=admin` for existing users without a `family_members` membership check.
 - Owner authorization dated 2026-11-20 supersedes the prior do-not-refix instruction for F-01/F-02 only.
+- This records the state at T12.80; T12.81/T12.82 closed both code issues as documented below.
 
 ### Owner-authorized mobile MediaPlayer exceptions
 
@@ -374,3 +375,25 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - **CONFIRMED:** `git diff --stat -- web/src/components/MediaPlayer.tsx` is empty.
 - **VERIFY ON VPS:** verify the deployed `SYNC_ON_STARTUP=false` environment and, after owner approval, check `/sync` dry-run and `/sync confirm` behavior against Telegram storage.
 - **NOT VERIFIED:** no live VPS, Telegram, or production database interaction was performed.
+
+## T12.85 — DB-wake UX and server status
+
+### Scope reconciliation and behavior
+
+- **CONFIRMED from source and existing T12.82 tests:** the originally registered verify-code hardening is already complete. `_get_or_create_family_user()` checks active membership for existing and new users; inactive members are rejected and only active members receive the admin family role. T12.85 made no auth-router change.
+- **CONFIRMED by implementation and regression tests:** `/logout_all`, `/users`, `/guest` status/rotate/off, `/user_add`, `/user_remove`, and `/sync` report the established DB-wake message and status button on `_DB_CONNECTIVITY_ERRORS`. `/sessions` has a matching catch while retaining its in-memory limiter behavior. `/sync` keeps Telegram lookup errors distinct from DB errors, so Telegram failures retain the server-log response and DB failures show the wake action.
+- **CONFIRMED by regression tests:** callback membership-gate DB errors answer with the wake alert. The `server_status` callback authorizes with live membership, falls back to the static bootstrap list only on DB-connectivity errors, performs a read-only `SELECT 1` bounded to 8 seconds, and reports database readiness, bot connection state, and process uptime in responses under 200 characters. The existing status button text/callback data and non-destructive classification are unchanged.
+- **CONFIRMED:** T12.83 commit-aware upload compensation and T12.84 dry-run/confirm reconciliation semantics remain intact; Telegram lookup logging now records exception class rather than traceback contents.
+- **CONFIRMED:** current task assignments supersede T12.80's temporary incident map: F-01 is closed in code by T12.81 and F-02 is closed in code by T12.82; both require live VPS verification. T12.89 covers schema proof (`verify_schema.py`), runbook/proxy validation, and provenance; T12.90 covers reliability hardening including the A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default, refresh-lifetime decision, clean-checkout gates, and freeze-candidate SHA. T12.91/T12.92 remain the stale-bundle/resource and final live-gate operations. VPS incident resolutions remain **NOT VERIFIED**.
+
+### Fresh T12.85 gate evidence — CONFIRMED
+
+- Date: 2026-11-20; branch: `hearth/t12.85`; Python: **3.13.0**.
+- Backend `.venv\Scripts\python -m pytest -q`: **190 passed, 61 warnings**.
+- Backend `.venv\Scripts\python -m compileall -q app`: **PASS**.
+- Backend `.venv\Scripts\pip check`: **PASS; no broken requirements**.
+- Node **20.19.5** / npm **10.8.2**; `npm ci`: **PASS** (447 packages; 24 existing dependency advisories: 1 low, 6 moderate, 15 high, 2 critical; no dependency changes).
+- `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **2 files, 14 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**.
+- MediaPlayer: `git diff --stat -- web/src/components/MediaPlayer.tsx` — **empty**.
+- **CONFIRMED:** all existing backend tests passed; no security test was deleted or weakened. Only the six authorized task files are changed.
+- **VERIFY ON VPS:** live active-member add/remove and verify-code behavior; DB-wake/server-status responses under actual DB sleep/outage; logout-all/user_remove invalidation of already-issued stream URLs. No VPS or production database request was made for this task.

@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t12.84`
-* **Current Task:** `T12.85` — verify-code role and membership hardening
+* **Active Branch:** `hearth/t12.85`
+* **Current Task:** `T12.86` — OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -37,12 +37,12 @@
 * [x] **T12.82** — `family_members.active` is the live bot/API family authorization authority
 * [x] **T12.83** — Safe upload compensation and unique `channel_message_id`
 * [x] **T12.84** — Fail-safe Telegram reconciliation: dry-run sync and confirmed-gone-only cleanup
-* [ ] **T12.85** — Verify-code role and membership hardening
+* [x] **T12.85** — Complete remaining DB-wake UX and server status; original verify-code scope already satisfied by T12.82
 * [ ] **T12.86** — OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape
 * [ ] **T12.87** — OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls
 * [ ] **T12.88** — Mobile exception parity and final player freeze
-* [ ] **T12.89** — Post-incident auth and origin incident closure
-* [ ] **T12.90** — GitHub origin and live deployment provenance
+* [ ] **T12.89** — Schema proof, deploy runbooks, proxy validation, and provenance
+* [ ] **T12.90** — Reliability hardening and clean-checkout freeze candidate
 * [ ] **T12.91** — Stale bundle and VPS resource recovery
 * [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R)
 * [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD; deployment paused pending T12.5 merge, owner smoke tests, and release re-freeze
@@ -54,8 +54,9 @@
 ## Deployment Readiness (owner fills as evidence lands)
 
 * **2026-11-20 post-incident state — CONFIRMED:** VPS origin repointed to GitHub; live SHA `c0aa30f28408add60574de9f9385912131b5524a` (`deploy-T12.7`); silent bot fixed by unconditional bot import in lifespan. WARP SOCKS5 `127.0.0.1:40000` present for GitHub IPv4 egress. Stale bundle `/opt/hearth/hearth-v1.0-rc.bundle` remains at `7629f0a`. Disk 75% (3.0/4.0 GB); RAM 210/512 MB.
-* **Incident items:** A1/A2/A4/A5/A6/A7 are tracked by T12.89 and T12.91; they are **NOT VERIFIED** resolved until VPS evidence is recorded.
-* **F-01 — CONFIRMED closed in code/tests by T12.81:** family stream version, `User.id` identity, and active membership checks are enforced before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs. **F-02 remains RE-OPENED** under the 2026-11-20 owner authorization; T12.85 and T12.89–T12.92 govern its remaining work.
+* **Incident items:** A1/A2 handler-count gate is registered under T12.90; the remaining schema/proxy/provenance and VPS resource/bundle evidence is registered under T12.89/T12.91, with final live gates under T12.92. All remain **NOT VERIFIED** resolved until evidence is recorded.
+* **F-01 — CONFIRMED CLOSED IN CODE by T12.81:** family stream version, `User.id` identity, and active membership checks are enforced before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs.
+* **F-02 — CONFIRMED CLOSED IN CODE by T12.82:** `family_members.active` governs bot/API authorization and verify-code for existing users; `AUTH_USERS` is only a DB-connectivity bootstrap fallback. **VERIFY ON VPS:** live membership add/remove, verify-code, and DB-wake recovery.
 * **MediaPlayer exceptions:** T12.86 exception #2 mobile-only auto-landscape and T12.87 exception #3 mobile-only tap controls/center play-pause are authorized; freeze resumes after each and T12.88 completes the final freeze. TV/PC behavior and exports/localStorage keys remain protected.
 
 * **Phase R FINAL 2026-11-19:** NO NAT64/DNS64 (native IPv4 returned; IPv4 curl failed). CONFIRMED reachable over IPv6: Telegram Bot API (HTTP 302), Telegram MTProto DC TCP (`2001:b28:f23d:f001::a:443`), Neon endpoint (2406:xx AAAA), apt/PyPI/PGDG/Let's Encrypt. IPv4-only fallbacks: DuckDNS update endpoint = set AAAA manually from PC; GitHub clone = scp release tarball/bundle from PC. Telegram MTProto LIBRARY IPv6 selection = verify at first boot (`/health/ready` Telegram connected).
@@ -79,7 +80,7 @@
 * T3→T6: family stream-token version/membership enforcement moved to T6.
 * 2026-11-19: remaining work re-baselined into T12.1→T16 execution order; T0 re-sequenced to "before first production boot"; playback cap wording corrected to **household-wide 2** (code was already global); T12.1 and T16 added.
 * 2026-11-19: owner-authorized one-time T12.3 exception permits only the MediaPlayer SPEEDS constant (+ minimal chip-row layout if required); freeze resumes afterward.
-* 2026-11-20: F-01 and F-02 re-opened by owner authorization for T12.83–T12.85/T12.89–T12.92. T12.86 and T12.87 add the two owner-authorized mobile-only MediaPlayer exceptions; TV/PC behavior, exports, and localStorage keys remain unchanged.
+* 2026-11-20: F-01 and F-02 were re-opened by owner authorization and are now closed in code by T12.81/T12.82; live VPS verification remains. T12.86 and T12.87 add the two owner-authorized mobile-only MediaPlayer exceptions; TV/PC behavior, exports, and localStorage keys remain unchanged.
 
 ## Deferred notes (status updated 2026-11-19)
 
@@ -120,6 +121,7 @@
 * `2026-11-20 | T12.82 | gate passed: pytest 162 (61 warnings); compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; family membership authorization tests green`
 * `2026-11-20 | T12.83 | gate passed: pytest 167 (61 warnings); compileall; pip check; npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; upload compensation and unique-index tests green`
 * `2026-11-20 | T12.84 | gate passed: pytest 177 (61 warnings); compileall; pip check; Node 20.19.5/npm 10.8.2 ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; fail-safe reconciliation tests green`
+* `2026-11-20 | T12.85 | gate passed: pytest 190 (61 warnings); compileall; pip check; Node 20.19.5/npm 10.8.2 npm ci/lint/typecheck; 14 frontend tests; build; dist/_redirects present; MediaPlayer diff empty`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

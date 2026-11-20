@@ -33,12 +33,12 @@ Task IDs continue the repo's T-numbering (T12.1 and T16 are new). One task = one
 | T12.82 | Make `family_members.active` the live bot/API family authorization authority. |
 | T12.83 | Make Telegram upload compensation commit-aware and file inserts idempotent by channel message ID. |
 | T12.84 | Fail-safe Telegram reconciliation: dry-run sync and confirmed-gone-only cleanup. |
-| T12.85 | Re-opened F-02 verify-code: remove static-`AUTH_USERS`/mint-admin bypass. |
+| T12.85 | Complete remaining DB-wake UX and server status; record the original verify-code scope as already satisfied by T12.82. |
 | T12.86 | OWNER-AUTHORIZED MediaPlayer exception #2: mobile-only auto-landscape. |
 | T12.87 | OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls/center play-pause. |
-| T12.88 | Mobile/TV/PC parity and final `MediaPlayer.tsx` freeze. |
-| T12.89 | Post-incident auth/origin closure; A-item tracking and security gates. |
-| T12.90 | GitHub origin/live `deploy-T12.7` provenance and release consistency. |
+| T12.88 | Verify mobile/TV/PC parity and apply the final `MediaPlayer.tsx` freeze. |
+| T12.89 | Prove schema with `verify_schema.py`; fix deploy runbooks; validate proxy configuration; record provenance. |
+| T12.90 | Reliability hardening (A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default `confirm=False`, refresh-lifetime decision); run final clean-checkout gates and record freeze-candidate SHA. |
 | T12.91 | Stale bundle and VPS disk/RAM recovery; incident A-item tracking. |
 | T12.92 | Final freeze plus T0-R, T15-R, and T16-R gate reruns before handoff. |
 
@@ -321,9 +321,13 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 **VERIFY ON VPS:** confirm the deployed `SYNC_ON_STARTUP=false` environment and exercise `/sync` dry-run/confirm against the production Telegram channel only after owner approval.
 **Commit:** `T12.84: Fail-safe reconciliation — dry-run sync, confirmed-gone only — gate passed`
 
-## T12.85 — Verify-code role and membership hardening
+## T12.85 — Complete DB-wake UX and server status
 
-**Scope:** remove the verify-code minting path that grants `role=admin` to an existing user without membership validation. Existing family members must receive the intended family role only after a live `family_members` check; unknown users remain fail-closed.
+**Scope:** the originally registered verify-code hardening is already satisfied by T12.82: `_get_or_create_family_user()` checks active membership for both existing and new users, and only active members receive `role=admin`. Complete DB-wake responses for `/logout_all`, `/users`, `/guest` status/rotate/off, `/sessions`, `/user_add`, `/user_remove`, and `/sync`; make the callback membership gate answer with the wake message on DB connectivity errors; and implement the bounded, membership-authorized `server_status` probe with bot connection state and process uptime. Preserve T12.83 upload compensation and T12.84 sync safety semantics.
+
+**Files:** `backend/app/bot.py`, `backend/tests/test_bot_db_wake.py`, `PLAN.md`, `PROGRESS.md`, `HANDOFF.md`, `AUDIT_REPORT.md`.
+**Gate:** full backend pytest, `compileall -q app`, and `pip check`; frontend `npm ci`, lint, typecheck, tests, and build; confirm `dist/_redirects`; preserve all existing bot tests and security assertions; MediaPlayer diff empty.
+**Commit:** `T12.85: Complete DB-wake UX + server status; reconcile T12.85–T12.92 task map — gate passed`
 
 ## T12.86 — OWNER-AUTHORIZED MediaPlayer exception #2: mobile auto-landscape
 
@@ -335,15 +339,15 @@ Make `/sync` a read-only dry run that reports proposed row deletions. `/sync con
 
 ## T12.88 — Mobile exception parity and final player freeze
 
-**Scope:** verify both owner-authorized mobile exceptions independently of TV/PC behavior, confirm no export or localStorage-key change, and record `git diff --stat -- web/src/components/MediaPlayer.tsx` evidence for the final freeze. T12.88 is the gate for no further `MediaPlayer.tsx` changes.
+**Scope:** verify parity of both owner-authorized mobile exceptions while preserving TV/PC behavior, every export, and both localStorage keys; record `git diff --stat -- web/src/components/MediaPlayer.tsx` evidence and freeze the file thereafter.
 
-## T12.89 — Post-incident auth and origin incident closure
+## T12.89 — Schema proof, deploy runbooks, proxy validation, and provenance
 
-**Scope:** track and close the incident items assigned here, including the family media identity/membership corrections for F-01/F-02 and incident A1/A2/A4/A5/A6/A7 work ownership where applicable. Re-run security tests, preserve all security invariants, and do not weaken or delete existing tests.
+**Scope:** produce schema proof with `verify_schema.py`, correct deployment runbook instructions, validate proxy configuration, and document deployment provenance. F-01 and F-02 code fixes are closed by T12.81 and T12.82; do not reassign those code changes here.
 
-## T12.90 — GitHub origin and live deployment provenance
+## T12.90 — Reliability hardening and clean-checkout freeze candidate
 
-**Scope:** enforce GitHub as the deployment source of truth, re-point remaining release documentation to the live `deploy-T12.7` provenance, and verify the final tested SHA rather than the stale bundle. No application/dependency behavior change is allowed unless separately authorized.
+**Scope:** harden reliability with the A1/A2 handler-count gate, cross-owner device-ID rejection, runtime auth-key health, sync default `confirm=False`, and a refresh-lifetime decision. Run final clean-checkout gates and record the freeze-candidate SHA.
 
 ## T12.91 — Stale bundle and VPS resource recovery
 
