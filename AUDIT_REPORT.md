@@ -835,3 +835,26 @@ The existing `handleBack` closes settings first; closes the player if a dialog i
 - **VERIFY ON TV:** Samsung TV controls and key mapping remain unchanged.
 - **VERIFY ON VPS:** none; this is a phone-only client UI change with no API/server contract change.
 - **CONFIRMED:** no task-scope deviations. `PLAN.md` unchanged; deleted tests: **none**. No device or VPS checks are claimed.
+
+## T13.9 — Household playback count endpoint
+
+### Changes — CONFIRMED
+
+- **CONFIRMED:** Added `PlaybackCountOut` with exactly `active` and `limit`, and authenticated `GET /api/playback/count`. The response uses `limiter.active()` (including its existing TTL purge) and `limiter.max_devices`; it exposes no device, file, or owner details.
+- **CONFIRMED:** Updated the playback router contract docstring and only the API contract comment in `web/src/lib/api.ts`; no executable frontend API behavior changed.
+- **CONFIRMED:** Extended `backend/tests/test_playback.py` for guest and family visibility of sessions across owners, expired-session count, unauthenticated 401, configured limit, and exact response keys. No tests were deleted.
+- **CONFIRMED:** Files touched: `backend/app/routers/playback.py`, `backend/app/schemas.py`, `backend/tests/test_playback.py`, `web/src/lib/api.ts`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` was unchanged.
+
+### Gate evidence — CONFIRMED
+
+- **CONFIRMED:** Python 3.13.0; `python -m compileall -q app` — PASS; `pip check` — PASS, no broken requirements; full `pytest -q` — **230 passed, 61 warnings** (T13.1 baseline: 226; no tests deleted).
+- **CONFIRMED:** Node 20.20.2 / npm 10.8.2; `npm ci` — PASS (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — PASS, 0 warnings; `npm run typecheck` — PASS; `vitest run` — **3 files, 61 tests passed** (T13.1 baseline: 178; the lower current count reflects previously documented T13.4 orientation-test deletions; this task made no frontend test changes); `npm run build` — PASS (1,529 modules); `dist/_redirects` — present; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** `git diff --stat -- web/src/components/MediaPlayer.tsx` — empty. `backend/app/playback.py` and protected auth/token behavior were unchanged.
+
+### Parity, verification, and deviations
+
+- **CONFIRMED:** TV/PC/tablet/player behavior is unchanged. The frontend receives only a contract-comment update, so no client call or dependency on the new endpoint was introduced; compatibility with the old server is preserved.
+- **VERIFY ON DEVICE:** None for this backend-only endpoint.
+- **VERIFY ON TV:** None for this backend-only endpoint.
+- **VERIFY ON VPS:** After the owner deploys, verify authenticated guest and family requests return only `{active, limit}` and an unauthenticated request returns 401. No VPS request was made for this task.
+- **CONFIRMED:** Deviations: none. Deleted tests: none. No device, TV, or VPS behavior is claimed as tested.

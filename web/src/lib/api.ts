@@ -13,6 +13,7 @@
  *   · fetchMe()/useMe() fail closed: any failure → null user, role "unknown".
  *   · 429 → { error: "RATE_LIMITED", retry_after_seconds } (server value).
  *   · 409 on playback/start → { error: "DEVICE_LIMIT", message, active }.
+ *   · GET /playback/count → { active, limit } (household-wide numbers only).
  *   · Stream URLs carry a signed per-file/per-device token; login JWTs never do.
  * ─────────────────────────────────────────────────────────────────────────────
  */

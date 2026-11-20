@@ -348,3 +348,73 @@ def test_logout_all_stops_only_callers_and_bumps_version(monkeypatch):
     assert lim.is_active("devC") is True            # other owner survives
     # stop_owner does NOT revoke — floors untouched.
     assert lim._revoked_before == {}
+
+
+@pytest.fixture
+def playback_count_api():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.routers import playback as playback_router
+
+    api = FastAPI()
+    api.include_router(playback_router.router, prefix="/api")
+    client = TestClient(api)
+    yield api, client, playback_router
+    client.close()
+
+
+@pytest.mark.parametrize(
+    ("role", "user_id"),
+    [("guest", 101), ("admin", 202)],
+)
+def test_playback_count_returns_household_count_for_any_authenticated_user(
+    playback_count_api, monkeypatch, role, user_id
+):
+    from types import SimpleNamespace
+
+    api, client, playback_router = playback_count_api
+    lim, _ = make_limiter(max_devices=3)
+    monkeypatch.setattr(playback_router, "limiter", lim)
+    lim.start("guest-device", "Guest phone", "guest", 1, owner_id=101)
+    lim.start("family-device", "Family TV", "admin", 2, owner_id=202)
+    user = SimpleNamespace(id=user_id, role=role)
+    api.dependency_overrides[playback_router.get_current_user] = lambda: user
+
+    response = client.get("/api/playback/count")
+
+    assert response.status_code == 200
+    assert set(response.json()) == {"active", "limit"}
+    assert response.json() == {"active": 2, "limit": lim.max_devices}
+
+
+def test_playback_count_purges_expired_sessions(playback_count_api, monkeypatch):
+    api, client, playback_router = playback_count_api
+    lim, clock = make_limiter(max_devices=3, ttl=75)
+    monkeypatch.setattr(playback_router, "limiter", lim)
+    lim.start("stale-device", "Stale phone", "guest", 1, owner_id=101)
+    clock.advance(76)
+    api.dependency_overrides[playback_router.get_current_user] = lambda: SimpleNamespace(
+        id=101,
+        role="guest",
+    )
+
+    response = client.get("/api/playback/count")
+
+    assert response.status_code == 200
+    assert response.json() == {"active": 0, "limit": lim.max_devices}
+
+
+def test_playback_count_requires_authentication(playback_count_api):
+    from app.database import get_db
+
+    api, client, _ = playback_count_api
+
+    async def unused_db():
+        yield None
+
+    api.dependency_overrides[get_db] = unused_db
+
+    response = client.get("/api/playback/count")
+
+    assert response.status_code == 401
