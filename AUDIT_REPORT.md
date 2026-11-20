@@ -730,3 +730,54 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings** (baseline 226).
 - Node **20.20.2** / npm **10.8.2**: `npm ci` — **PASS** (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `vitest run` — **3 files, 44 tests passed** (35 prior, +9; no deleted tests); `npm run build` — **PASS** (1,529 modules); `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
 - **CONFIRMED:** backend tests match the T13.1 baseline (226). Frontend tests are 44 versus 178 at T13.1 because T13.4 removed 147 tests for deleted orientation machinery and added four WebKit-fallback tests (documented in T13.4); this task adds nine tests to the T13.5 count of 35 and deletes none. `git diff --check` — **PASS**. No live or physical-device checks were performed.
+
+## T13.7 — TV/PC/tablet side controls and D-pad navigation
+
+### Changes and scope — CONFIRMED
+
+- **CONFIRMED:** added the left Brightness +/− and right Volume +/− glass button stacks inside the existing controls overlay, gated by `!phonePlayer`; phone controls remain gesture-only. Buttons use the requested 44px circular fill, border, text, `hp-focus`, and 3.5% edge inset.
+- **CONFIRMED:** each button step is 0.1 and reuses `clampBrightness`, `clampVolume`, and the existing preference/volume engine. Volume starts from effective zero while muted, mutes at zero, and un-mutes on a positive step. The existing additive brightness preference now drives the black `z-[12]` overlay on any player device when brightness is below 1; no video CSS filter or storage key was added.
+- **CONFIRMED:** reuses `GestureIndicator`; button actions show the matching level/side and use a 1200ms visible interval plus a 1200ms fade. Phone drags retain their 800ms fade. The auto-hide guard now pauses while either side cluster has focus; existing `hideControlsNow` focus rescue remains in place.
+- **CONFIRMED:** added the two bar-end transitions, cluster up/down navigation, side-cluster return-to-bar navigation, and side-button OK/Enter activation on every keydown, including remote repeats. Existing key handling outside the new clusters and the two bar-end transitions is unchanged by source review.
+- **CONFIRMED:** files touched: `web/src/components/MediaPlayer.tsx`, `HANDOFF.md`, `PROGRESS.md`, and `AUDIT_REPORT.md`. `PLAN.md` was unchanged because the T13.7 card matched the implementation. No tests were deleted and no dependencies, API/store exports, storage keys, backend files, or deployment files changed.
+- **CONFIRMED:** every `MediaPlayer.tsx` hunk maps to #5.6: `Plus`/`Minus` imports and side-control refs; side-step actions and shared-indicator timing; hide guard while side controls have focus; keyboard/remote activation and navigation for the new controls plus two bar-end entries; brightness overlay availability for the new brightness controls; indicator rendering for non-phone button feedback; and the two device-gated side stacks. Phone gesture values/thresholds, center/bottom controls, scrubbing, existing key handling outside the additions, and server-facing behavior were not otherwise changed.
+
+### Keymap parity matrix — CONFIRMED by source review
+
+| Input | Before T13.7 | After T13.7 |
+|---|---|---|
+| ArrowLeft | Top row moves left; bottom bar moves to the previous control and stops at its first control; elsewhere seeks backward, accelerated by held-key repeats. | Same except ArrowLeft at the bottom bar's first control focuses Brightness +. In the new Volume cluster it returns to the bottom bar's last control; new cluster Up/Down behavior is listed below. |
+| ArrowRight | Top row moves right; bottom bar moves to the next control and stops at its last control; elsewhere seeks forward, accelerated by held-key repeats. | Same except ArrowRight at the bottom bar's last control focuses Volume +. In the new Brightness cluster it returns to the bottom bar's first control; new cluster Up/Down behavior is listed below. |
+| ArrowUp / ArrowDown | Existing Scrubber, top-row, toast, play-button, root-focus, and auto-hide routing. | Those existing contexts are unchanged. In either new side cluster, Up/Down move between + and − and stop at the ends. |
+| j/J and l/L | Hold-to-seek backward / forward; keyup releases the seek hold. | Unchanged; only the two actual Arrow key bar-end transitions above were added. |
+| Enter / OK | At the main player, Enter activates the focused native control or otherwise toggles playback; in dialogs/settings it follows their existing native-control rules. OK had no separate key-name branch. | Existing behavior is unchanged outside a new side button. On a side button Enter/OK activates it once per keydown, including repeat keydowns; keyCode 13/23 are accepted there only. |
+| Space | Native focused controls activate; otherwise Space toggles playback; dialogs/settings retain their existing handling. | Unchanged outside a new side button; on a side button it steps on keydown/repeat instead of toggling playback. |
+| Escape / Backspace / BrowserBack / GoBack | Calls existing `handleBack`. | Unchanged. Tizen keyCodes 461 and 10009 still call `handleBack`. |
+| MediaPlayPause / MediaTogglePlayPause; keyCode 179 | Toggles play/pause. | Unchanged. |
+| MediaPlay / keyCode 415; MediaPause / keyCode 19 | Play / pause. | Unchanged. |
+| MediaStop / keyCode 413 | Closes the player. | Unchanged. |
+| MediaFastForward / keyCode 417; MediaRewind / keyCode 412 | Seeks +30 / −30 seconds. | Unchanged. The Tizen media-key registration list is unchanged. |
+| Home / End | On Scrubber, seek to start / end; elsewhere no action. | Unchanged. |
+| m/M; f/F; c/C | Toggle mute; toggle fullscreen; cycle aspect. | Unchanged. |
+| `<` / `,`; `>` / `.` | Step playback rate down / up under the existing shift/key conditions. | Unchanged. |
+| 0–9 | Seek to the corresponding duration fraction when target is not interactive. | Unchanged. |
+| Tab | Existing focus wrapping in dialogs/settings; browser Tab behavior elsewhere. | Unchanged. |
+| Ctrl / Meta / Alt combinations | Return without hijacking browser shortcuts. | Unchanged. |
+| Other keys | Existing default no-op behavior. | Unchanged. |
+
+**CONFIRMED:** the only changes to pre-existing navigation contexts are the two bar-end entries; the additional arrow/activation behavior is confined to the newly added side clusters. **VERIFY ON TV:** Samsung Tizen key delivery, focus rings, cluster reachability, and held-OK ramping have not been tested on hardware.
+
+### Gates — CONFIRMED
+
+- Python **3.13.0**: `python -m compileall -q app` — **PASS**; `pip check` — **PASS, no broken requirements**; full `pytest -q` — **226 passed, 61 warnings** (baseline 226).
+- Node **20.20.2** / npm **11.20.0**: `npm ci` — **PASS** (447 packages; 24 full dependency-tree advisories: 1 low, 6 moderate, 15 high, 2 critical); `npm run lint` — **PASS, 0 warnings**; `npm run typecheck` — **PASS**; `npm test` (script runs `vitest run`) — **3 files, 44 tests passed** (baseline 44; no tests deleted); `npm run build` — **PASS** (1,529 modules); `dist/_redirects` — **present**; `npm audit --omit=dev` — **0 vulnerabilities**.
+- **CONFIRMED:** backend/frontend test counts do not drop versus the pre-task counts (226 / 44). `git diff --check` — **PASS**. No live-server or physical-device checks were performed.
+
+### Parity, verification, and deviations
+
+- **CONFIRMED by source review:** phone side buttons are not rendered; phone gestures and their 800ms indicator fade remain. The buttons use only existing client preferences and do not require a new server/API contract.
+- **VERIFY ON TV:** Samsung TV remote focus, the two bar-end routes, focus-ring visibility, held-OK repetition, and side-button visibility/indicator behavior.
+- **VERIFY ON DEVICE:** PC mouse click behavior and tablet controls/touch behavior.
+- **VERIFY ON VPS:** none required; this is a web-only change and the old server contract is unchanged.
+- **CONFIRMED by source review:** the existing dedicated media-key branches return before the general `revealControls` call (previously recorded under T13.3); they were left unchanged to preserve key parity. Thus, those special media keys do not independently re-arm the controls timer. This is pre-existing and not introduced by T13.7.
+- **CONFIRMED:** no task-scope deviation. Deleted tests: **none**. No Samsung TV, PC/tablet physical-device, or VPS behavior was tested.

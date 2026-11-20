@@ -50,7 +50,7 @@ import type {
 import {
     ArrowLeft, AlertTriangle, Check, ChevronDown, ChevronUp, Crop, FastForward,
     Film, Gauge, Info, Layers, Loader2, Maximize, Minimize, Monitor, Music,
-    Pause, PictureInPicture2, Play, RectangleHorizontal, Rewind, RotateCcw,
+    Minus, Pause, PictureInPicture2, Play, Plus, RectangleHorizontal, Rewind, RotateCcw,
     Settings, Smartphone, Sparkles, StretchHorizontal, Subtitles, Sun, Tablet, Tv, Users,
     Volume1, Volume2, VolumeX, X,
 } from 'lucide-react';
@@ -107,6 +107,7 @@ interface GestureIndicatorState {
     value: number;
     side: PlayerDragSide;
     visible: boolean;
+    fadeMs: number;
     hintText?: string;
 }
 interface SurfaceGesture {
@@ -1270,6 +1271,12 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
     const dialogRef = useRef<HTMLDivElement>(null);
     const scrubberRef = useRef<HTMLDivElement>(null);
     const playBtnRef = useRef<HTMLButtonElement>(null);
+    const brightnessClusterRef = useRef<HTMLDivElement>(null);
+    const volumeClusterRef = useRef<HTMLDivElement>(null);
+    const brightnessPlusRef = useRef<HTMLButtonElement>(null);
+    const brightnessMinusRef = useRef<HTMLButtonElement>(null);
+    const volumePlusRef = useRef<HTMLButtonElement>(null);
+    const volumeMinusRef = useRef<HTMLButtonElement>(null);
     const settingsBtnRef = useRef<HTMLButtonElement>(null);
     const cropBtnRef = useRef<HTMLButtonElement>(null);
     const backBtnRef = useRef<HTMLButtonElement>(null);
@@ -1564,14 +1571,21 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         setControlsVisible(true);
         if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
         const v = videoRef.current;
+        const active = document.activeElement;
+        const sideButtonFocused = active instanceof Element && !!active.closest('[data-hp-side-cluster]');
         if (v && !v.paused && !settingsOpenRef.current && !dialogOpenRef.current && !isDraggingScrubber.current) {
-            hideTimer.current = setTimeout(() => {
-                hideTimer.current = null;
-                const el = videoRef.current;
-                if (!el || el.paused || bufferingRef.current || settingsOpenRef.current
-                    || dialogOpenRef.current || isDraggingScrubber.current) return;
-                hideControlsNow();
-            }, HIDE_AFTER_MS);
+            if (!sideButtonFocused) {
+                hideTimer.current = setTimeout(() => {
+                    hideTimer.current = null;
+                    const el = videoRef.current;
+                    const focused = document.activeElement;
+                    const focusedSideButton = focused instanceof Element
+                        && !!focused.closest('[data-hp-side-cluster]');
+                    if (!el || el.paused || bufferingRef.current || settingsOpenRef.current
+                        || dialogOpenRef.current || isDraggingScrubber.current || focusedSideButton) return;
+                    hideControlsNow();
+                }, HIDE_AFTER_MS);
+            }
         }
     }, [hideControlsNow]);
 
@@ -1604,6 +1618,30 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
 
     /* ── Prefs ── */
     const patchPrefs = useCallback((p: Partial<Prefs>) => setPrefs(prev => ({ ...prev, ...p })), []);
+    const showSideIndicator = (kind: GestureIndicatorState['kind'], value: number, side: PlayerDragSide) => {
+        const fadeMs = 1200;
+        if (indicatorFadeTimer.current) clearTimeout(indicatorFadeTimer.current);
+        setGestureIndicator({ kind, value, side, visible: true, fadeMs });
+        indicatorFadeTimer.current = setTimeout(() => {
+            setGestureIndicator(current => current ? { ...current, visible: false } : null);
+            indicatorFadeTimer.current = setTimeout(() => {
+                setGestureIndicator(null);
+                indicatorFadeTimer.current = null;
+            }, fadeMs);
+        }, fadeMs);
+    };
+    const adjustBrightness = useStableCallback((direction: 1 | -1) => {
+        const value = clampBrightness(prefsRef.current.brightness + direction * 0.1);
+        patchPrefs({ brightness: value });
+        showSideIndicator('brightness', value, 'left');
+    });
+    const adjustVolume = useStableCallback((direction: 1 | -1) => {
+        const current = prefsRef.current;
+        const start = current.muted ? 0 : current.volume;
+        const value = clampVolume(start + direction * 0.1);
+        patchPrefs({ volume: value, muted: value === 0 });
+        showSideIndicator('volume', value, 'right');
+    });
 
     const applySubtitleMode = () => {
         const v = videoRef.current;
@@ -2150,6 +2188,36 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             return;
         }
 
+        const activeElement = document.activeElement;
+        const sideCluster = t?.closest?.('[data-hp-side-cluster]')
+            ?? (activeElement instanceof Element ? activeElement.closest('[data-hp-side-cluster]') : null);
+        const sideKind = sideCluster?.getAttribute('data-hp-side-cluster');
+        const sideButtonTarget = t?.closest?.('[data-hp-side-control]')
+            ?? (activeElement instanceof Element ? activeElement.closest('[data-hp-side-control]') : null);
+        const sideButton = sideButtonTarget instanceof HTMLButtonElement ? sideButtonTarget : null;
+        const sideActivation = k === 'Enter' || k === 'OK' || k === ' ' || code === 13 || code === 23;
+
+        if (sideKind && sideButton && sideActivation) {
+            e.preventDefault();
+            sideButton.click();
+            return;
+        }
+        if ((sideKind === 'brightness' || sideKind === 'volume') && (k === 'ArrowUp' || k === 'ArrowDown')) {
+            e.preventDefault();
+            stepLinear(
+                sideKind === 'brightness' ? brightnessClusterRef.current : volumeClusterRef.current,
+                k === 'ArrowDown' ? 1 : -1,
+            );
+            return;
+        }
+        if ((sideKind === 'brightness' && k === 'ArrowRight')
+            || (sideKind === 'volume' && k === 'ArrowLeft')) {
+            e.preventDefault();
+            const items = focusablesIn(barRef.current);
+            (sideKind === 'brightness' ? items[0] : items[items.length - 1])?.focus();
+            return;
+        }
+
         if (nativeActivates && (k === 'Enter' || k === ' ')) return; // the focused button handles its own activation
 
         const inTop = !!t?.closest?.('[data-hp-top]');
@@ -2167,6 +2235,13 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                 e.preventDefault();
                 if (arrow) {
                     if (inTop) { stepLinear(topRef.current, -1); break; }
+                    if (!phonePlayer && (inBar || barRef.current?.contains(activeElement))) {
+                        const items = focusablesIn(barRef.current);
+                        if (items[0] === activeElement && brightnessPlusRef.current) {
+                            brightnessPlusRef.current.focus();
+                            break;
+                        }
+                    }
                     if (inBar) { stepLinear(barRef.current, -1); break; }
                 }
                 holdSeek(-1, e.repeat);
@@ -2175,6 +2250,13 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                 e.preventDefault();
                 if (arrow) {
                     if (inTop) { stepLinear(topRef.current, 1); break; }
+                    if (!phonePlayer && (inBar || barRef.current?.contains(activeElement))) {
+                        const items = focusablesIn(barRef.current);
+                        if (items[items.length - 1] === activeElement && volumePlusRef.current) {
+                            volumePlusRef.current.focus();
+                            break;
+                        }
+                    }
                     if (inBar) { stepLinear(barRef.current, 1); break; }
                 }
                 holdSeek(1, e.repeat);
@@ -2326,6 +2408,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
             value,
             side: gesture.side,
             visible: true,
+            fadeMs: 800,
             hintText: gesture.hintText,
         });
         e.preventDefault();
@@ -2514,15 +2597,15 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                     </video>
                 )}
 
-                {videoMounted && isVideo && phonePlayer && (
+                {videoMounted && prefs.brightness < 1 && (
                     <div
                         aria-hidden="true"
                         className="pointer-events-none absolute inset-0 z-[12] bg-black"
                         style={{ opacity: 1 - prefs.brightness }}
                     />
                 )}
-                {gestureIndicator && phonePlayer && isVideo && !isMinimized && (
-                    <GestureIndicator {...gestureIndicator} fadeMs={800} />
+                {gestureIndicator && !isMinimized && (
+                    <GestureIndicator {...gestureIndicator} />
                 )}
 
                 {videoMounted && !isVideo && (
@@ -2764,6 +2847,58 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
                                 </div>
                             </div>
                         </div>
+                        {!phonePlayer && (
+                            <>
+                                <div
+                                    ref={brightnessClusterRef}
+                                    data-hp-side-cluster="brightness"
+                                    role="group"
+                                    aria-label="Brightness controls"
+                                    className="absolute left-[3.5%] top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2"
+                                >
+                                    <button
+                                        type="button" ref={brightnessPlusRef} data-hp-side-control
+                                        aria-label="Increase brightness" title="Increase brightness"
+                                        onClick={() => adjustBrightness(1)}
+                                        className="hp-focus flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85 transition-[background-color,transform] duration-150 hover:bg-white/20 active:scale-95"
+                                    >
+                                        <Plus className="h-5 w-5" />
+                                    </button>
+                                    <button
+                                        type="button" ref={brightnessMinusRef} data-hp-side-control
+                                        aria-label="Decrease brightness" title="Decrease brightness"
+                                        onClick={() => adjustBrightness(-1)}
+                                        className="hp-focus flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85 transition-[background-color,transform] duration-150 hover:bg-white/20 active:scale-95"
+                                    >
+                                        <Minus className="h-5 w-5" />
+                                    </button>
+                                </div>
+                                <div
+                                    ref={volumeClusterRef}
+                                    data-hp-side-cluster="volume"
+                                    role="group"
+                                    aria-label="Volume controls"
+                                    className="absolute right-[3.5%] top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2"
+                                >
+                                    <button
+                                        type="button" ref={volumePlusRef} data-hp-side-control
+                                        aria-label="Increase volume" title="Increase volume"
+                                        onClick={() => adjustVolume(1)}
+                                        className="hp-focus flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85 transition-[background-color,transform] duration-150 hover:bg-white/20 active:scale-95"
+                                    >
+                                        <Plus className="h-5 w-5" />
+                                    </button>
+                                    <button
+                                        type="button" ref={volumeMinusRef} data-hp-side-control
+                                        aria-label="Decrease volume" title="Decrease volume"
+                                        onClick={() => adjustVolume(-1)}
+                                        className="hp-focus flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/85 transition-[background-color,transform] duration-150 hover:bg-white/20 active:scale-95"
+                                    >
+                                        <Minus className="h-5 w-5" />
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 
