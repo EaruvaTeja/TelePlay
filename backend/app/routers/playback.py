@@ -8,6 +8,7 @@ Contract (must match web/src/lib/api.ts exactly)
   POST /api/playback/stop         {device_id, file_id?}              -> 204
   DELETE /api/playback/{device_id}                                   -> 204 (admin only)
   GET  /api/playback/active                                          -> list[ActiveDeviceOut]
+  GET  /api/playback/count                                           -> PlaybackCountOut (household-wide numbers only)
 
 Security model
 --------------
@@ -51,6 +52,7 @@ from ..playback import limiter
 from ..schemas import (
     ActiveDeviceOut,
     PlaybackBeatIn,
+    PlaybackCountOut,
     PlaybackStartIn,
     PlaybackStartOut,
 )
@@ -275,3 +277,16 @@ async def list_active_devices(
         )
         for s in sessions
     ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Household playback count (privacy-safe for guests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/count", response_model=PlaybackCountOut)
+async def playback_count(
+    current_user: User = Depends(get_current_user),
+) -> PlaybackCountOut:
+    """Return only the household-wide number of active sessions and the limit."""
+    sessions = limiter.active()
+    return PlaybackCountOut(active=len(sessions), limit=limiter.max_devices)

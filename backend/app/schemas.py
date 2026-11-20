@@ -182,6 +182,11 @@ class ActiveDeviceOut(BaseModel):
     is_self: bool = False
 
 
+class PlaybackCountOut(BaseModel):
+    active: int
+    limit: int
+
+
 class PlaybackStartOut(BaseModel):
     stream_url: str
     heartbeat_seconds: int
