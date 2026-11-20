@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t12.89`
-* **Current Task:** `T12.90` — Reliability hardening and clean-checkout freeze candidate
+* **Active Branch:** `hearth/t12.90`
+* **Current Task:** `T12.91` — Stale bundle and VPS resource recovery (**ON HOLD**)
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -42,7 +42,7 @@
 * [x] **T12.87** — OWNER-AUTHORIZED MediaPlayer exception #3: mobile-only tap controls
 * [x] **T12.88** — Mobile exception parity and final player freeze
 * [x] **T12.89** — Schema proof, deploy runbooks, proxy validation, and provenance
-* [ ] **T12.90** — Reliability hardening and clean-checkout freeze candidate
+* [x] **T12.90** — Reliability hardening, banner replacement, and clean-checkout freeze candidate
 * [ ] **T12.91** — Stale bundle and VPS resource recovery
 * [ ] **T12.92** — Final freeze, gate rerun, and handoff (T0-R/T15-R/T16-R)
 * [ ] **T0** — Verified backups BEFORE first production boot (Neon dump verified + off-host; session backup; restore procedure recorded in `deploy/BACKUP_LOG.md`) — ON HOLD; deployment paused pending T12.5 merge, owner smoke tests, and release re-freeze
@@ -54,7 +54,10 @@
 ## Deployment Readiness (owner fills as evidence lands)
 
 * **2026-11-20 post-incident state — CONFIRMED:** VPS origin repointed to GitHub; live SHA `c0aa30f28408add60574de9f9385912131b5524a` (`deploy-T12.7`); silent bot fixed by unconditional bot import in lifespan. WARP SOCKS5 `127.0.0.1:40000` present for GitHub IPv4 egress. Stale bundle `/opt/hearth/hearth-v1.0-rc.bundle` remains at `7629f0a`. Disk 75% (3.0/4.0 GB); RAM 210/512 MB.
-* **Incident items:** A1/A2 handler-count gate is registered under T12.90; the remaining schema/proxy/provenance and VPS resource/bundle evidence is registered under T12.89/T12.91, with final live gates under T12.92. All remain **NOT VERIFIED** resolved until evidence is recorded.
+* **Incident items:** A1/A2 handler-count fail-fast is **CONFIRMED in code/tests by T12.90**; runtime VPS behavior is **VERIFY ON VPS**. Schema/proxy/provenance are T12.89, VPS bundle/resources are T12.91, and live release gates are T12.92.
+* **T12.90 freeze candidate:** clean-checkout test commit `e9f170459ad532020907325472f538408029048c`, tree `d84fe1abbd34f41d9b1d4e8454a0938a944c3648` (base `a0499775e410465f503fe148aee0959b859bc479`); final audit evidence is appended after the gates, with no source/test/banner changes afterward. Owner tags `deploy-T12.90-rc` only after merge.
+* **T12.90 banner:** **CONFIRMED** source/destination SHA-256 match; tracked blob and final commit inclusion are checked before handoff.
+* **ON HOLD:** T12.91, T0-R, T12.92, T15-R, and T16-R; deployment/release remains NO-GO pending owner authorization and required VPS evidence.
 * **F-01 — CONFIRMED CLOSED IN CODE by T12.81:** family stream version, `User.id` identity, and active membership checks are enforced before cache access. **VERIFY ON VPS:** live logout-all/user_remove invalidation of already-issued URLs.
 * **F-02 — CONFIRMED CLOSED IN CODE by T12.82:** `family_members.active` governs bot/API authorization and verify-code for existing users; `AUTH_USERS` is only a DB-connectivity bootstrap fallback. **VERIFY ON VPS:** live membership add/remove, verify-code, and DB-wake recovery.
 * **MediaPlayer exceptions:** T12.86 exception #2 mobile-only auto-landscape and T12.87 exception #3 mobile-only tap controls/center play-pause are authorized; freeze resumes after each and T12.88 completes the final freeze. TV/PC behavior and exports/localStorage keys remain protected.
@@ -126,6 +129,7 @@
 * `2026-11-20 | T12.87 | gate passed: pytest 190 (61 warnings); compileall; pip check; Node 20.19.5/npm 10.8.2 npm ci/lint/typecheck; 170 frontend tests; build; dist/_redirects present`
 * `2026-11-20 | T12.88 | gate passed: pytest 190 (61 warnings); compileall; pip check; Node 20.19.5/npm 10.8.2 npm ci/lint/typecheck; 170 frontend tests; build; dist/_redirects present; parity source checks passed; MediaPlayer task diff empty`
 * `2026-11-20 | T12.89 | gate passed: 208 backend tests (61 warnings), compileall, pip check; Node 20.20.2/npm 11.20.0 npm ci/lint/typecheck, 170 frontend tests, build, dist/_redirects present; schema/proxy regression tests green`
+* `2026-11-20 | T12.90 | backend 221 passed (61 warnings), compileall and pip check; frontend lint/typecheck and 170 tests/build passed; prod npm audit 0, pip-audit findings recorded; banner replaced and verified`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

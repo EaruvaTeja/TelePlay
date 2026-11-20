@@ -190,6 +190,10 @@ class PlaybackLimiter:
         Re-starting the SAME device never consumes a second slot.
         """
         self._purge()
+        existing = self._sessions.get(device_id)
+        if existing is not None and existing.owner_id != owner_id:
+            logger.warning("Refused playback device ID owner conflict")
+            return False, list(self._sessions.values())
 
         if not reactivate and self.is_revoked(device_id, issued_at):
             logger.info("Refused revoked device %s", device_id)
@@ -210,7 +214,6 @@ class PlaybackLimiter:
             generation = float(int(time.time()))
 
         now = self.clock()
-        existing = self._sessions.get(device_id)
         self._sessions[device_id] = PlaybackSession(
             device_id=device_id,
             label=(label or "Device")[:40],

@@ -484,3 +484,27 @@ T12.81–T12.92 are registered in `PLAN.md` and `PROGRESS.md`. T12.92 requires T
 - Node **20.20.2** / npm **11.20.0**; `npm ci`: **PASS** (447 packages; 24 reported vulnerabilities: 1 low, 6 moderate, 15 high, 2 critical; no dependency changes); `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **3 files, 170 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**.
 - Targeted proxy/schema tests: **25 passed**. `git diff --check`: **PASS**. `MediaPlayer.tsx` has no task diff; dependency manifests/lockfiles are unchanged.
 - **VERIFY ON VPS:** run `verify_schema.py` against the Neon DIRECT endpoint before and after the release boot, retain both reports, and confirm the post-boot schema is clean. Confirm the corrected smoke command and deployment logging on the VPS. No Neon connection or VPS deployment was performed for this task.
+
+## Final Release Gate Evidence — T12.90
+
+### Clean-checkout gates — CONFIRMED
+
+- Date: **2026-11-20**. Gates ran in a detached clean checkout based on `main` SHA `a0499775e410465f503fe148aee0959b859bc479`, tested candidate SHA `e9f170459ad532020907325472f538408029048c`, tree `d84fe1abbd34f41d9b1d4e8454a0938a944c3648`. This snapshot contains all T12.90 code, tests, task docs, and replacement banner; this evidence append and the final progress log are docs-only changes made after the run. The tested code/test/banner tree was not changed afterward.
+- Runtime versions: Python **3.13.0**, pip **24.2**, Node **20.19.5**, npm **10.8.2**.
+- Fresh Python 3.13 venv with `requirements-dev.txt`: **PASS**. Backend `python -m pytest -q`: **221 passed, 61 warnings**; bot authorization/DB-wake subset (`test_bot_access.py`, `test_bot_db_wake.py`): **37 passed**. `python -m compileall -q app`: **PASS**. `python -m pip check`: **PASS; no broken requirements**.
+- `pip freeze`: **63 package entries**; key versions include FastAPI 0.115.5, Starlette 0.41.3, Pydantic 2.10.3, SQLAlchemy 2.0.36, asyncpg 0.30.0, PyroTGFork 2.2.24.1, python-jose 3.3.0, ecdsa 0.19.2, pytest 8.3.4, and pytest-asyncio 0.24.0.
+- `pip-audit -r requirements.txt`: **22 finding rows in 3 packages; exit 1 due to advisories**. Findings: `python-jose 3.3.0` (PYSEC-2024-232, PYSEC-2024-233, PYSEC-2025-185, PYSEC-2026-4298), `starlette 0.41.3` (PYSEC-2026-161, PYSEC-2026-248, PYSEC-2026-249, PYSEC-2026-1941, PYSEC-2026-1942, PYSEC-2026-2280, PYSEC-2026-2281), and `ecdsa 0.19.2` (PYSEC-2026-1325). Repeated dependency-path rows account for the difference between 12 unique IDs and 22 rows. **No blind upgrades or dependency changes were made.**
+- Frontend with Node 20: `npm ci`: **PASS**, 447 packages; npm reported 24 total dependency-tree advisories (1 low, 6 moderate, 15 high, 2 critical). `npm run lint`: **PASS**; `npm run typecheck`: **PASS**; `npm test`: **3 files, 170 tests passed**; `npm run build`: **PASS**; `dist/_redirects`: **present**. `npm audit --omit=dev`: **0 production vulnerabilities**; no `--force` or dependency changes.
+- Hygiene: clean checkout remained clean after gates. No tracked `.env` (excluding `.env.example`), session, or dump artifacts. Source inspection confirms there is no active folders router or folder-delete caller (`DeleteConfirmModal` is called with `type="file"`) and no QR generator/call site. **Residual legacy declarations remain dormant:** folder-era ORM/schema fields, ignored `folder_id` compatibility parameters, and unused QR CSS selectors; they were not removed because schema/frontend files are outside T12.90 scope and the existing plan defers schema cleanup. No dependency manifest or lockfile changed.
+- MediaPlayer: this task's diff from `origin/main` is **empty**. Cumulative `c7bf7ec..HEAD` remains one file, 203 insertions / 13 deletions, confined to the T12.86 mobile-only auto-landscape and T12.87 mobile tap-controls/center-button exceptions, as itemized in T12.88 above. The T12.88 source checks confirm unchanged exports, `hearth_player_prefs` / `hearth_device_id`, TV key map, and desktop behavior. No T12.90 player edit was made.
+
+### Banner replacement — CONFIRMED
+
+- Prior `files/app_banner.png` from `origin/main`: **86,758 bytes**, SHA-256 `2644D9B2246CC6D4E1D01CDB39276A29C640084CF27EAD5717E7F12A5669C024`.
+- Replacement source: `C:\Users\earuv\Downloads\app_banner.png`; project destination: `files/app_banner.png`. Both are **1,087,582 bytes**, SHA-256 `B93FC3C45938C0887506645592354A90241859755F9B8511BD4914DD7119FEBC`; clean-checkout and source hashes match. The tracked Git blob is `eab95d3af8c4a97fb4cb236c9bfa6346264b1027`; it is included in the T12.90 task commit.
+
+### Candidate status and outstanding live checks
+
+- **CONFIRMED:** local reliability tests and clean-checkout gates passed. The freeze-candidate source/test snapshot SHA and tree are recorded above and in `PROGRESS.md`. No deployment, VPS operation, or release tag was performed.
+- **VERIFY ON VPS:** unhealthy Telegram client reporting and auth-key recovery workflow; cross-account device-ID conflict returns 409; `/sync confirm` reports `aborted for safety` when the guard trips; replacement banner renders after deployment.
+- **ON HOLD:** T12.91, T0-R, T12.92, T15-R, and T16-R. Owner tags `deploy-T12.90-rc` only after merge.

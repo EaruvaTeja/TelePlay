@@ -25,7 +25,12 @@ from sqlalchemy.exc import DBAPIError, OperationalError
 from .config import get_settings
 from .database import async_session, engine, init_db
 from .routers import auth_router, files_router, playback, streaming_router
-from .telegram import start_all_clients, stop_all_clients, tg_client
+from .telegram import (
+    get_telegram_health_failure,
+    start_all_clients,
+    stop_all_clients,
+    tg_client,
+)
 
 # Make application logs visible (uvicorn only configures its own loggers by default).
 logging.basicConfig(
@@ -51,8 +56,11 @@ async def _supervised_sync():
     
     try:
         logger.info("Starting background sync with Telegram storage channel...")
-        removed = await sync_with_channel()
-        logger.info("Background sync complete: removed %d orphaned files", removed)
+        candidates = await sync_with_channel(confirm=False)
+        logger.info(
+            "Background sync dry-run complete: %d candidate deletions; nothing removed",
+            candidates,
+        )
     except Exception as e:
         # Log but don't crash - sync is best-effort
         logger.error("Background sync failed: %s", e, exc_info=True)
@@ -66,8 +74,15 @@ async def lifespan(app: FastAPI):
     # Register bot handlers (module-level decorators in bot.py).
     # Must happen before start_all_clients() so Pyrogram has them on connect.
     # Kept independent of SYNC_ON_STARTUP so handlers are always registered.
+    tg_client.loop = asyncio.get_running_loop()
     from . import bot  # noqa: F401
-    
+    await asyncio.sleep(0)
+
+    handler_count = sum(len(group) for group in tg_client.dispatcher.groups.values())
+    logger.info("Bot handlers registered: %d", handler_count)
+    if handler_count == 0:
+        raise RuntimeError("Bot handlers were not registered; refusing startup")
+
     logger.info("Starting Media Hub Backend...")
     
     # 1. Initialize database
@@ -260,16 +275,20 @@ async def health_readiness():
         checks["database"] = False
     
     # Check Telegram main client connectivity
-    try:
-        if tg_client is None:
-            checks["telegram"] = False
-        else:
-            # Try to get bot info - this verifies the client is connected
-            me = await tg_client.get_me()
-            checks["telegram"] = me is not None
-    except Exception as e:
-        logger.warning("Telegram health check failed: %s", e)
+    telegram_failure = get_telegram_health_failure()
+    if telegram_failure:
         checks["telegram"] = False
+    else:
+        try:
+            if tg_client is None:
+                checks["telegram"] = False
+            else:
+                # Try to get bot info - this verifies the client is connected.
+                me = await tg_client.get_me()
+                checks["telegram"] = me is not None
+        except Exception as e:
+            logger.warning("Telegram health check failed (%s)", type(e).__name__)
+            checks["telegram"] = False
     
     # Determine overall status
     all_healthy = all(checks.values())
@@ -279,6 +298,8 @@ async def health_readiness():
         "status": "ready" if all_healthy else "not_ready",
         "checks": checks,
     }
+    if telegram_failure:
+        response["telegram_reason"] = telegram_failure
     
     # Return with appropriate status code
     from fastapi.responses import JSONResponse

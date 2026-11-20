@@ -89,6 +89,10 @@ class TelegramSyncLookupError(RuntimeError):
     """A Telegram-side sync lookup failed, rather than a database operation."""
 
 
+class SyncSafetyAbort(RuntimeError):
+    """The reconciliation safety guard prevented all database deletions."""
+
+
 async def _reply_db_waking(
     target: Message,
     *,
@@ -884,7 +888,12 @@ async def sync_command(client, message: Message):
         else "🔎 Checking Telegram library (dry run)..."
     )
     try:
-        n = await sync_with_channel(confirm=confirm)
+        if confirm:
+            n = await sync_with_channel(confirm=True)
+        else:
+            n = await sync_with_channel(confirm=False)
+    except SyncSafetyAbort:
+        return await status.edit("aborted for safety")
     except TelegramSyncLookupError as exc:
         logger.error("Sync Telegram lookup failed (%s)", type(exc).__name__)
         return await status.edit("⚠️ Sync failed; check server logs before retrying.")
@@ -905,7 +914,7 @@ async def sync_command(client, message: Message):
         )
 
 
-async def sync_with_channel(*, confirm: bool = True) -> int:
+async def sync_with_channel(*, confirm: bool = False) -> int:
     """Report candidate deletions, or delete them after a confirmed safe scan."""
     async with async_session() as db:
         rows = (await db.execute(select(File))).scalars().all()
@@ -958,7 +967,7 @@ async def sync_with_channel(*, confirm: bool = True) -> int:
                 len(gone),
                 len(rows),
             )
-            return 0
+            raise SyncSafetyAbort("aborted for safety")
 
         if gone:
             for r in gone:

@@ -329,6 +329,25 @@ def test_sync_command_dry_run_then_confirm_deletes_only_confirmed_candidates(
     assert any("deleted file_id=9" in record.message for record in caplog.records)
 
 
+def test_sync_command_reports_safety_abort_instead_of_removed_zero(
+    monkeypatch, bot_module
+):
+    rows = _sync_rows()
+    db, _ = _configure_sync(monkeypatch, bot_module, rows)
+
+    async def all_gone(chat_id, message_ids):
+        return []
+
+    monkeypatch.setattr(bot_module.tg_client, "get_messages", all_gone)
+    message = _FakeSyncMessage(bot_module.settings.admin_telegram_id, ["sync", "confirm"])
+
+    asyncio.run(bot_module.sync_command(None, message))
+
+    assert message.statuses[0].edits[-1] == "aborted for safety"
+    assert db.deleted == []
+    assert db.committed == 0
+
+
 def test_sync_confirm_aborts_all_deletes_if_any_batch_lookup_errors(
     monkeypatch, bot_module
 ):

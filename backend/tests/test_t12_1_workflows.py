@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 from types import SimpleNamespace
 
 from sqlalchemy import select
@@ -45,7 +46,17 @@ class FakeAsyncSessionFactory:
         return self.db
 
 
-def _run_sync_guard(monkeypatch, bot, rows, alive_ids):
+async def _register_bot_handlers_on_running_loop(main):
+    import app.bot as bot
+
+    main.tg_client.loop = asyncio.get_running_loop()
+    main.tg_client.dispatcher.groups.clear()
+    bot = importlib.reload(bot)
+    await asyncio.sleep(0)
+    return bot
+
+
+def _run_sync_guard(monkeypatch, bot, rows, alive_ids, *, confirm=None):
     db = FakeSyncDb(rows)
     monkeypatch.setattr(bot, "async_session", FakeAsyncSessionFactory(db))
 
@@ -58,13 +69,18 @@ def _run_sync_guard(monkeypatch, bot, rows, alive_ids):
     import app.routers.streaming as streaming
 
     monkeypatch.setattr(streaming, "invalidate_meta", lambda file_id, message_id: invalidated.append((file_id, message_id)))
-    result = asyncio.run(bot.sync_with_channel())
+    try:
+        if confirm is None:
+            result = asyncio.run(bot.sync_with_channel())
+        else:
+            result = asyncio.run(bot.sync_with_channel(confirm=confirm))
+    except bot.SyncSafetyAbort as exc:
+        result = exc
     return result, db, invalidated
 
 
 def test_sync_startup_disabled_creates_no_sync_task(monkeypatch):
     import app.main as main
-    import app.bot as bot
 
     async def no_op():
         return None
@@ -81,10 +97,10 @@ def test_sync_startup_disabled_creates_no_sync_task(monkeypatch):
     monkeypatch.setattr(main, "engine", SimpleNamespace(dispose=no_op))
     monkeypatch.setattr(main, "_supervised_sync", fake_sync)
     monkeypatch.setattr(main.settings, "sync_on_startup", False)
-    monkeypatch.setattr(bot, "sync_with_channel", fake_sync)
     main._sync_task = None
 
     async def run():
+        await _register_bot_handlers_on_running_loop(main)
         async with main.lifespan(main.app):
             await asyncio.sleep(0)
             assert main._sync_task is None
@@ -95,32 +111,48 @@ def test_sync_startup_disabled_creates_no_sync_task(monkeypatch):
 
 def test_sync_startup_enabled_runs_sync(monkeypatch):
     import app.main as main
-    import app.bot as bot
 
     async def no_op():
         return None
 
     calls = []
 
-    async def fake_sync():
-        calls.append("sync")
+    async def fake_sync(*, confirm=False):
+        calls.append(confirm)
         return 0
 
     monkeypatch.setattr(main, "init_db", no_op)
     monkeypatch.setattr(main, "start_all_clients", no_op)
     monkeypatch.setattr(main, "stop_all_clients", no_op)
     monkeypatch.setattr(main, "engine", SimpleNamespace(dispose=no_op))
-    monkeypatch.setattr(main, "_supervised_sync", fake_sync)
     monkeypatch.setattr(main.settings, "sync_on_startup", True)
-    monkeypatch.setattr(bot, "sync_with_channel", fake_sync)
     main._sync_task = None
 
     async def run():
+        bot = await _register_bot_handlers_on_running_loop(main)
+        monkeypatch.setattr(bot, "sync_with_channel", fake_sync)
         async with main.lifespan(main.app):
             await asyncio.sleep(0)
 
     asyncio.run(run())
-    assert calls == ["sync"]
+    assert calls == [False]
+
+
+def test_sync_default_only_reports_candidates(monkeypatch):
+    import app.bot as bot
+
+    rows = [
+        SimpleNamespace(id=1, channel_message_id=101),
+        SimpleNamespace(id=2, channel_message_id=102),
+    ]
+    result, db, invalidated = _run_sync_guard(
+        monkeypatch, bot, rows, alive_ids={101}
+    )
+
+    assert result == 1
+    assert db.deleted == []
+    assert db.committed == 0
+    assert invalidated == []
 
 
 def test_sync_guard_aborts_when_all_messages_are_gone(monkeypatch):
@@ -130,8 +162,10 @@ def test_sync_guard_aborts_when_all_messages_are_gone(monkeypatch):
         SimpleNamespace(id=1, channel_message_id=101),
         SimpleNamespace(id=2, channel_message_id=102),
     ]
-    result, db, invalidated = _run_sync_guard(monkeypatch, bot, rows, alive_ids=set())
-    assert result == 0
+    result, db, invalidated = _run_sync_guard(
+        monkeypatch, bot, rows, alive_ids=set(), confirm=True
+    )
+    assert isinstance(result, bot.SyncSafetyAbort)
     assert db.deleted == []
     assert db.committed == 0
     assert invalidated == []
@@ -146,8 +180,10 @@ def test_sync_guard_aborts_when_more_than_thirty_percent_are_gone(monkeypatch):
         SimpleNamespace(id=3, channel_message_id=103),
         SimpleNamespace(id=4, channel_message_id=104),
     ]
-    result, db, invalidated = _run_sync_guard(monkeypatch, bot, rows, alive_ids={101, 102})
-    assert result == 0
+    result, db, invalidated = _run_sync_guard(
+        monkeypatch, bot, rows, alive_ids={101, 102}, confirm=True
+    )
+    assert isinstance(result, bot.SyncSafetyAbort)
     assert db.deleted == []
     assert db.committed == 0
     assert invalidated == []
@@ -169,7 +205,9 @@ def test_sync_normal_cleanup_deletes_only_gone_rows(monkeypatch):
         SimpleNamespace(id=10, channel_message_id=110),
     ]
     alive_ids = {101, 102, 103, 104, 105, 106, 107, 108, 110}
-    result, db, invalidated = _run_sync_guard(monkeypatch, bot, rows, alive_ids=alive_ids)
+    result, db, invalidated = _run_sync_guard(
+        monkeypatch, bot, rows, alive_ids=alive_ids, confirm=True
+    )
     assert result == 1
     assert db.deleted == [rows[8]]
     assert db.committed == 1

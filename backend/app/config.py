@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # ── JWT / sessions ───────────────────────────────────────────────────────
     jwt_secret: str
     jwt_expiry_minutes: int = Field(default=10080, ge=5, le=43200)   # 7 days
-    refresh_token_days: int = Field(default=90, ge=1, le=365)
+    refresh_token_days: int = Field(default=30, ge=1, le=365)
     stream_token_hours: int = Field(default=12, ge=1, le=72)
 
     # ── Guest access ─────────────────────────────────────────────────────────
