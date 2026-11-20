@@ -4,8 +4,8 @@
 
 * **Audited Code Baseline:** `84926670051242bbbcd5afae378aa6f319ded062` (main; T1–T12 merged via PR #16; full static audit 2026-11-19)
 * **Historical Dev Baseline:** `5f0d769d7c8c143f27e419da90622505d153bcf0` (T1–T12 era; see git history)
-* **Active Branch:** `hearth/t13.2`
-* **Current Task:** `T13.3` — Issue 7: controls auto-hide 4s to 3s
+* **Active Branch:** `hearth/t13.3`
+* **Current Task:** `T13.4` — Issue 2: phone portrait-first player and compact controls
 * **Release SHA:** frozen at end of T14 (tag `v1.0-rc`) — see Deployment Readiness below
 
 ---
@@ -47,7 +47,7 @@
 * [x] **T12.90.2** — OWNER-AUTHORIZED MediaPlayer exception #4: pseudo-landscape slider axis fix and final freeze gates
 * [x] **T13.1** — Phase authorization and docs re-baseline (docs only)
 * [x] **T13.2** — Issue 1: remove bottom-bar volume cluster (all devices)
-* [ ] **T13.3** — Issue 7: controls auto-hide 4s to 3s (all devices)
+* [x] **T13.3** — Issue 7: controls auto-hide 4s to 3s (all devices)
 * [ ] **T13.4** — Issue 2: phone portrait-first player and compact controls
 * [ ] **T13.5** — Issue 3: glass center play/pause button (visual only)
 * [ ] **T13.6** — Issue 4: phone brightness/volume drag gestures and indicator
@@ -162,6 +162,7 @@ T12.91, T12.92, T0, T15, and T16 remain **ON HOLD** during this phase.
 * `2026-11-20 | T12.90.2 | gate passed: clean-checkout pytest 226 (61 warnings), compileall, pip check; pip-audit 22 advisory rows recorded; Node 20.20.2/npm 10.8.2 lint/typecheck and 178 frontend tests/build passed; npm audit production 0`
 * `2026-11-20 | T13.1 | baseline gates passed: 226 backend tests (61 warnings); 178 frontend tests; lint 0 warnings; production npm audit 0; build and dist/_redirects passed`
 * `2026-11-20 | T13.2 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint/typecheck; 178 frontend tests; build and dist/_redirects; production audit 0`
+* `2026-11-20 | T13.3 | gate passed: pytest 226 (61 warnings); compileall and pip check; Node 20.20.2/npm 10.8.2 lint 0 warnings/typecheck; 178 frontend tests; build and dist/_redirects; production audit 0`
 
 **T0 status:** ON HOLD pending T12.5 merge, owner smoke tests, and release re-freeze. Do not run backups until the owner resumes T0.
 

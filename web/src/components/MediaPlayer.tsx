@@ -25,7 +25,7 @@
  *    slider no longer traps focus, no wrap-around on bars, spatial navigation in the
  *    settings panel and dialogs, Down scrolls the panel when no control is below,
  *    OK on the scrubber toggles play, the resume toast's "Start over" is reachable.
- *  · AUTO-HIDE: 4s inactivity timer, paused while settings are open, a dialog is
+ *  · AUTO-HIDE: 3s inactivity timer, paused while settings are open, a dialog is
  *    showing, buffering, or the scrubber is being dragged. When it fires, focus moves
  *    off the hidden controls so OK/Enter toggles playback instead of a hidden button.
  *  · MINIMIZE: the <video> stays mounted (visually collapsed) so playback continues
@@ -113,7 +113,7 @@ const PREFS_KEY = 'hearth_player_prefs';
 const DEVICE_KEY = 'hearth_device_id';
 const DEFAULT_PREFS: Prefs = { volume: 1, muted: false, rate: 1, aspect: 'fit', subtitleLang: 'off' };
 
-const HIDE_AFTER_MS = 4000;       // controls auto-hide
+const HIDE_AFTER_MS = 3000;       // controls auto-hide
 const BUFFER_DEBOUNCE_MS = 350;   // a stall must persist this long before the spinner shows
 const SEEK_GATE_MS = 120;         // hold-to-seek coalescing window
 const MOVE_THROTTLE_MS = 120;     // mouse-move → reveal throttle
@@ -1535,7 +1535,7 @@ function MediaPlayerContent({ file, onClose, isMinimized, setMinimized }: MediaP
         seekBy(dir * step, h.total);
     };
 
-    /* ── Controls auto-hide (4s inactivity; not while settings / dialog / buffering / scrubbing) ── */
+    /* ── Controls auto-hide (3s inactivity; not while settings / dialog / buffering / scrubbing) ── */
     const hideControlsNow = useCallback(() => {
         if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
         const wrap = ctlWrapRef.current;
